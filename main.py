@@ -1,7 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from config import API_ID, API_HASH, SESSION_NAME, ALL_ID
-from utils import is_original_post, edit_text_message, edit_caption_message, from_bot
+from utils import is_original_post, edit_text_message, edit_caption_message
 
 app = Client(
     SESSION_NAME,
