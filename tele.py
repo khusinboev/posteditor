@@ -38,7 +38,7 @@ async def edit_text_message(event, num: int):
         message=event.id,
         text=new_text,
         link_preview=False,
-        formatting_entities=entities_right(event.text, num)
+        formatting_entities=get_premium_emojis(event.message)+entities_right(event.text, num)
     )
     print(f"Edited text message {event.id}")
     # except Exception as e:
@@ -54,7 +54,7 @@ async def edit_caption_message(event, num: int):
             message=event.id,
             text=new_caption,
             link_preview=False,
-            formatting_entities=entities_right(event.text, num)
+            formatting_entities=get_premium_emojis(event.message)+entities_right(event.text, num)
         )
     except Exception as e:
         print(f"Error editing caption: {e}")
