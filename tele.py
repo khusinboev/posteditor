@@ -19,17 +19,17 @@ async def edit_text_message(event, num: int):
     print("tahrir1")
     """Edit text message to add channel footer"""
     new_text = f"{event.text}\n\n{ALL_TEXT[num]}"
-    try:
-        await client.edit_message(
-            entity=ALL_ID[num],
-            message=event.id,
-            text=new_text,
-            link_preview=False,
-            formatting_entities=entities_right(event.text, num)
-        )
-        print(f"Edited text message {event.id}")
-    except Exception as e:
-        print(f"Error editing text message: {e}")
+    # try:
+    await client.edit_message(
+        entity=ALL_ID[num],
+        message=event.id,
+        text=new_text,
+        link_preview=False,
+        formatting_entities=entities_right(event.text, num)
+    )
+    print(f"Edited text message {event.id}")
+    # except Exception as e:
+    #     print(f"Error editing text message: {e}")
 
 
 async def edit_caption_message(event, num: int):

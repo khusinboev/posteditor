@@ -26,7 +26,7 @@ ALL_TEXT = [
     "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live",
     "✅️@Talim24uz",
     "✅️@Talim24uz",
-    "🇺🇿 @nodavlattalim — nodavlat oliy ta’lim muassasalari haqida rasmiy xabarlar!"
+    "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live"
 ]
 def entities_right(msg, num):
     en = len(msg) if len(msg)==0 else len(msg)+2+len([char for char in msg if emoji.is_emoji(char)])
@@ -54,6 +54,7 @@ def entities_right(msg, num):
                 length=2,
                 document_id=5350384878254826109
             )
-        ]
+        ],
+        None
     ]
     return ALL_ENTITIES[num]
