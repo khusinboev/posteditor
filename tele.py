@@ -5,6 +5,19 @@ from config import API_ID, API_HASH, SESSION_NAME, ALL_ID, ALL_TEXT, entities_ri
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
 
+from telethon.tl.types import MessageEntityCustomEmoji
+
+def get_premium_emojis(message):
+    if not message.entities:
+        return []
+
+    premium_emojis = []
+    for entity in message.entities:
+        if isinstance(entity, MessageEntityCustomEmoji):
+            premium_emojis.append(entity)
+    
+    return premium_emojis
+
 def is_original_post(event):
     """Check if the message is an original post (not forwarded)"""
     print("tekshiruv")
