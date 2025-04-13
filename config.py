@@ -2,9 +2,9 @@
 from telethon.tl.types import MessageEntityCustomEmoji
 import emoji
 
-API_ID = 19841707 # 29595868
-API_HASH = 'de8c610fb965d77a50775e2deef0e3ce' # 'a09a969ce2b4e13726812ab8e696cd18'
-SESSION_NAME = 'my_bot1'  # Session name for the user bot
+API_ID = 29595868
+API_HASH = 'a09a969ce2b4e13726812ab8e696cd18'
+SESSION_NAME = 'my_bot'  # Session name for the user bot
 
 admin = [619839487, 1918760732]
 
