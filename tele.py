@@ -63,6 +63,9 @@ async def handle_new_message(event):
         elif event.message.media and not event.text:
             await edit_caption_message(event, num)
 
+@client.on(events.NewMessage())
+async def handle_all(event):
+    print("bedaquuu")
 
 if __name__ == "__main__":
     print("Bot ishga tushdi...")
