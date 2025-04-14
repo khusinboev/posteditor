@@ -38,13 +38,15 @@ async def edit_text_message(event, num: int):
         original_text = event.message.message
         new_text = f"{original_text}\n\n{ALL_TEXT[num]}"
         
-        # Xabarning yangi versiyasini tahrirlaymiz, emoji qo‘shish
+        # Tahrirlanayotgan xabarda emoji qo‘shish
+        all_entities = get_premium_emojis(event.message) + entities_right(original_text, num)
+        
         await client.edit_message(
             entity=ALL_ID[num],
             message=event.message.id,
             text=new_text,
             link_preview=False,
-            formatting_entities=get_premium_emojis(event.message) + entities_right(original_text, num)
+            formatting_entities=all_entities  # Emoji’larni saqlash
         )
         print(f"Tahrirlandi: {event.message.id}")
     except Exception as e:
@@ -58,12 +60,14 @@ async def edit_caption_message(event, num: int):
         new_caption = f"{caption}\n\n{ALL_TEXT[num]}" if caption else ALL_TEXT[num]
         
         # Captionni tahrirlaymiz, emoji qo‘shish
+        all_entities = get_premium_emojis(event.message) + entities_right(caption, num)
+        
         await client.edit_message(
             entity=ALL_ID[num],
             message=event.message.id,
             text=new_caption,
             link_preview=False,
-            formatting_entities=get_premium_emojis(event.message) + entities_right(caption, num)
+            formatting_entities=all_entities  # Emoji’larni saqlash
         )
         print(f"Caption tahrirlandi: {event.message.id}")
     except Exception as e:
