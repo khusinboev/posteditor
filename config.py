@@ -1,4 +1,5 @@
 from telethon.tl.types import MessageEntityCustomEmoji
+import emoji
 
 API_ID = 29595868
 API_HASH = 'a09a969ce2b4e13726812ab8e696cd18'
@@ -23,6 +24,12 @@ CUSTOM_EMOJI_MAP = {
     3: (2, 5350384878254826109),  # ✅
     4: (2, 5350384878254826109),  # ✅
 }
+
+
+def calc_true_offset(msg: str):
+    """Unicode bo'yicha offset hisoblash"""
+    graphemes = list(emoji.get_emoji_regexp().findall(msg))  # Emoji topish
+    return len(graphemes)
 
 
 def entities_right(original_text: str, num: int):
