@@ -35,7 +35,7 @@ async def edit_text_message(event, num: int):
         entities += entities_right(original_text, num)
 
         # Caption'dan yuqori joylashtirishni tekshirish
-        show_caption = event.message.show_caption_above_media if event.message.show_caption_above_media is not None else False
+        
 
         await client.edit_message(
             entity=ALL_ID[num],
@@ -43,7 +43,7 @@ async def edit_text_message(event, num: int):
             text=new_text,
             link_preview=False,
             formatting_entities=entities,
-            show_caption_above_media=show_caption  # Show caption optionni qo'shish
+            
         )
         log_info(f"Tahrirlandi (text): {event.message.id}")
     except Exception as e:
@@ -58,16 +58,14 @@ async def edit_caption_message(event, num: int):
         entities = get_premium_emojis(event.message)
         entities += entities_right(caption, num)
 
-        # Caption'dan yuqori joylashtirishni tekshirish
-        show_caption = event.message.show_caption_above_media if event.message.show_caption_above_media is not None else False
+        
 
         await client.edit_message(
             entity=ALL_ID[num],
             message=event.message.id,
             text=new_caption,
             link_preview=False,
-            formatting_entities=entities,
-            show_caption_above_media=show_caption  # Show caption optionni qo'shish
+            formatting_entities=entities
         )
         log_info(f"Tahrirlandi (caption): {event.message.id}")
     except Exception as e:
