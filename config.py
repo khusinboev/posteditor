@@ -1,18 +1,19 @@
 from telethon.tl.types import MessageEntityCustomEmoji
-import emoji
 
 API_ID = 29595868
 API_HASH = 'a09a969ce2b4e13726812ab8e696cd18'
-SESSION_NAME = 'my_bot'  # Session name for the user bot
+SESSION_NAME = 'my_bot'
 
 admin = [619839487, 1918760732]
 
-ALL_ID = ["nodavlattalim",
-          "abitur24",
-          "Talim_Live",
-          "Talim24uz",
-          "ai_lingoBot",
-          "TRANSLATE_TRANSLATOR_PEREVODCHIK"]
+ALL_ID = [
+    "nodavlattalim",
+    "abitur24",
+    "Talim_Live",
+    "Talim24uz",
+    "ai_lingoBot",
+    "TRANSLATE_TRANSLATOR_PEREVODCHIK"
+]
 
 ALL_TEXT = [
     "🇺🇿 @nodavlattalim — nodavlat oliy ta’lim muassasalari haqida rasmiy xabarlar!",
@@ -24,40 +25,29 @@ ALL_TEXT = [
 ]
 
 def entities_right(msg: str, num: int):
-    added_text = "\n\n" + ALL_TEXT[num]  # Biz qo‘shayotgan matn
-    full_text = msg + added_text
+    added_text = ALL_TEXT[num]
+    full_text = msg + "\n\n" + added_text
 
-    # Qayerga emoji qo‘shilishini aniqlaymiz
-    emoji_pos = full_text.find('🇺🇿') if '🇺🇿' in full_text else full_text.find('✅️')
-
-    if emoji_pos == -1:
-        return None
-
-    # Emoji uzunligini aniqlash
-    emoji_len = 4 if '🇺🇿' in full_text else 2
-
-    ALL_ENTITIES = {
-        0: [
-            MessageEntityCustomEmoji(
-                offset=emoji_pos,
-                length=emoji_len,
-                document_id=5325506731164312731
-            )
-        ],
-        3: [
-            MessageEntityCustomEmoji(
-                offset=emoji_pos,
-                length=emoji_len,
-                document_id=5350384878254826109
-            )
-        ],
-        4: [
-            MessageEntityCustomEmoji(
-                offset=emoji_pos,
-                length=emoji_len,
-                document_id=5350384878254826109
-            )
-        ]
+    emoji_data = {
+        0: ("🇺🇿", 5325506731164312731, 4),
+        3: ("✅️", 5350384878254826109, 2),
+        4: ("✅️", 5350384878254826109, 2)
     }
 
-    return ALL_ENTITIES.get(num, None)
+    if num not in emoji_data:
+        return None
+
+    emoji_char, doc_id, emoji_len = emoji_data[num]
+    offset = full_text.find(emoji_char)
+
+    if offset == -1:
+        print(f"Emoji '{emoji_char}' not found in the text!")
+        return None
+
+    return [
+        MessageEntityCustomEmoji(
+            offset=offset,
+            length=emoji_len,
+            document_id=doc_id
+        )
+    ]
