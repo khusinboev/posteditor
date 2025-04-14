@@ -1,6 +1,7 @@
 from telethon import TelegramClient, events
 from config import API_ID, API_HASH, SESSION_NAME, ALL_ID, ALL_TEXT, entities_right, log_error, log_info
 from collections import defaultdict
+import asyncio
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
@@ -9,7 +10,6 @@ album_buffer = defaultdict(list)
 album_timers = {}
 
 def get_premium_emojis(message):
-    """Xabardagi mavjud entity'larni qaytaradi"""
     entities = []
     try:
         if message.entities:
@@ -32,10 +32,15 @@ def is_original_post(event):
 
 async def edit_text_message(event, num: int):
     try:
-        original_text = event.message.message
+        original_text = event.message.message or ""
         add_text = ALL_TEXT[num]
-        new_text = f"{original_text}\n\n{add_text}"
 
+        # === Optimallashtirish: Agar allaqachon qo'shilgan bo‘lsa, o‘zgartirmaymiz
+        if add_text.strip() in original_text:
+            log_info(f"Allaqachon mavjud (text): {event.message.id}")
+            return
+
+        new_text = f"{original_text}\n\n{add_text}"
         entities = get_premium_emojis(event.message)
         entities += entities_right(original_text, num)
 
@@ -54,8 +59,12 @@ async def edit_caption_message(event, num: int):
     try:
         caption = event.message.message or ""
         add_text = ALL_TEXT[num]
-        new_caption = f"{caption}\n\n{add_text}" if caption else add_text
 
+        if add_text.strip() in caption:
+            log_info(f"Allaqachon mavjud (caption): {event.message.id}")
+            return
+
+        new_caption = f"{caption}\n\n{add_text}" if caption else add_text
         entities = get_premium_emojis(event.message)
         entities += entities_right(caption, num)
 
@@ -89,16 +98,15 @@ async def handle_new_message(event):
         album_buffer[grouped_id].append(event)
 
         if grouped_id not in album_timers:
-            album_timers[grouped_id] = client.loop.call_later(
-                1.5, lambda: client.loop.create_task(process_album(grouped_id))
-            )
+            album_timers[grouped_id] = True
+            await asyncio.sleep(1.5)
+            await process_album(grouped_id)
+            del album_timers[grouped_id]
     else:
         await process_single_message(event)
 
 async def process_album(grouped_id):
     events = album_buffer.pop(grouped_id, [])
-    album_timers.pop(grouped_id, None)
-
     if not events:
         return
 
