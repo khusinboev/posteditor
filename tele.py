@@ -1,5 +1,5 @@
 from telethon import TelegramClient, events
-from config import API_ID, API_HASH, SESSION_NAME, ALL_ID, ALL_TEXT, entities_right
+from config import API_ID, API_HASH, SESSION_NAME, ALL_ID, ALL_TEXT, entities_right, log_error, log_info
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
@@ -18,14 +18,12 @@ def get_premium_emojis(message):
         pass
     return entities
 
-
 def is_original_post(event):
     return (
         event.chat and
         event.chat.username in ALL_ID and
         not event.fwd_from
     )
-
 
 async def edit_text_message(event, num: int):
     try:
@@ -36,17 +34,20 @@ async def edit_text_message(event, num: int):
         entities = get_premium_emojis(event.message)
         entities += entities_right(original_text, num)
 
+        # Caption'dan yuqori joylashtirishni tekshirish
+        show_caption = event.message.show_caption_above_media if event.message.show_caption_above_media is not None else False
+
         await client.edit_message(
             entity=ALL_ID[num],
             message=event.message.id,
             text=new_text,
             link_preview=False,
-            formatting_entities=entities
+            formatting_entities=entities,
+            show_caption_above_media=show_caption  # Show caption optionni qo'shish
         )
-        print(f"Tahrirlandi (text): {event.message.id}")
+        log_info(f"Tahrirlandi (text): {event.message.id}")
     except Exception as e:
-        print(f"Xatolik (text): {e}")
-
+        log_error(f"Xatolik (text): {e}")
 
 async def edit_caption_message(event, num: int):
     try:
@@ -57,17 +58,20 @@ async def edit_caption_message(event, num: int):
         entities = get_premium_emojis(event.message)
         entities += entities_right(caption, num)
 
+        # Caption'dan yuqori joylashtirishni tekshirish
+        show_caption = event.message.show_caption_above_media if event.message.show_caption_above_media is not None else False
+
         await client.edit_message(
             entity=ALL_ID[num],
             message=event.message.id,
             text=new_caption,
             link_preview=False,
-            formatting_entities=entities
+            formatting_entities=entities,
+            show_caption_above_media=show_caption  # Show caption optionni qo'shish
         )
-        print(f"Tahrirlandi (caption): {event.message.id}")
+        log_info(f"Tahrirlandi (caption): {event.message.id}")
     except Exception as e:
-        print(f"Xatolik (caption): {e}")
-
+        log_error(f"Xatolik (caption): {e}")
 
 @client.on(events.NewMessage(incoming=True))
 async def handle_new_message(event):
@@ -83,8 +87,7 @@ async def handle_new_message(event):
         elif event.message.media:
             await edit_caption_message(event, num)
 
-
 if __name__ == "__main__":
-    print("Bot ishga tushdi...")
+    log_info("Bot ishga tushdi...")
     client.start()
     client.run_until_disconnected()
