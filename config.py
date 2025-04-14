@@ -23,35 +23,41 @@ ALL_TEXT = [
     "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live"
 ]
 
-def entities_right(msg, num):
-    # Emoji o'lchamlarini hisoblash va to'g'ri joylash
-    en = len(msg) if len(msg) == 0 else len(msg) + 2 + len([char for char in msg if emoji.is_emoji(char)])
-    print("Emoji uzunligi:", en)
+def entities_right(msg: str, num: int):
+    added_text = "\n\n" + ALL_TEXT[num]  # Biz qo‘shayotgan matn
+    full_text = msg + added_text
 
-    ALL_ENTITIES = [
-        [  # 0-index: 🇺🇿
+    # Qayerga emoji qo‘shilishini aniqlaymiz
+    emoji_pos = full_text.find('🇺🇿') if '🇺🇿' in full_text else full_text.find('✅️')
+
+    if emoji_pos == -1:
+        return None
+
+    # Emoji uzunligini aniqlash
+    emoji_len = 4 if '🇺🇿' in full_text else 2
+
+    ALL_ENTITIES = {
+        0: [
             MessageEntityCustomEmoji(
-                offset=en,
-                length=4,
-                document_id=5325506731164312731  # Emoji document_id
+                offset=emoji_pos,
+                length=emoji_len,
+                document_id=5325506731164312731
             )
         ],
-        None,  # 1
-        None,  # 2
-        [  # 3
+        3: [
             MessageEntityCustomEmoji(
-                offset=en,
-                length=2,
+                offset=emoji_pos,
+                length=emoji_len,
                 document_id=5350384878254826109
             )
         ],
-        [  # 4
+        4: [
             MessageEntityCustomEmoji(
-                offset=en,
-                length=2,
+                offset=emoji_pos,
+                length=emoji_len,
                 document_id=5350384878254826109
             )
-        ],
-        None
-    ]
-    return ALL_ENTITIES[num]
+        ]
+    }
+
+    return ALL_ENTITIES.get(num, None)
