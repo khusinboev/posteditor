@@ -46,7 +46,7 @@ def entities_right(original_text: str, num: int):
     emoji_length, emoji_id = CUSTOM_EMOJI_MAP[num]
 
     # offset — bu original_text uzunligi + 2 (yangi qatordan)
-    offset = len(original_text) + 2
+    offset = len(original_text.encode('utf-16-le')) // 2 + 2  # bu aniqroq offset beradi
 
     return [MessageEntityCustomEmoji(
         offset=offset,
