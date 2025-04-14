@@ -1,12 +1,14 @@
 from telethon import TelegramClient, events
 from config import API_ID, API_HASH, SESSION_NAME, ALL_ID, ALL_TEXT, entities_right
 from telethon.tl.types import MessageEntityCustomEmoji
+import emoji
 
 # TelegramClient yaratamiz
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
 
 def get_premium_emojis(message):
+    """Xabar yoki caption uchun emoji'larni olish"""
     entities = []
     try:
         if message.entities:
@@ -35,6 +37,8 @@ async def edit_text_message(event, num: int):
     try:
         original_text = event.message.message
         new_text = f"{original_text}\n\n{ALL_TEXT[num]}"
+        
+        # Xabarning yangi versiyasini tahrirlaymiz, emoji qo‘shish
         await client.edit_message(
             entity=ALL_ID[num],
             message=event.message.id,
@@ -52,6 +56,8 @@ async def edit_caption_message(event, num: int):
     try:
         caption = event.message.message or ""
         new_caption = f"{caption}\n\n{ALL_TEXT[num]}" if caption else ALL_TEXT[num]
+        
+        # Captionni tahrirlaymiz, emoji qo‘shish
         await client.edit_message(
             entity=ALL_ID[num],
             message=event.message.id,
@@ -66,6 +72,7 @@ async def edit_caption_message(event, num: int):
 
 @client.on(events.NewMessage(incoming=True))
 async def handle_new_message(event):
+    """Yangi xabarni qabul qilish va uni tahrirlash"""
     print("Yangi xabar qabul qilindi")
     username = event.chat.username if event.chat else None
     print("Foydalanuvchi:", username)
