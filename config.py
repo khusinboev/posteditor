@@ -6,14 +6,7 @@ SESSION_NAME = 'my_bot'
 
 admin = [619839487, 1918760732]
 
-ALL_ID = [
-    "nodavlattalim",
-    "abitur24",
-    "Talim_Live",
-    "Talim24uz",
-    "ai_lingoBot",
-    "TRANSLATE_TRANSLATOR_PEREVODCHIK"
-]
+ALL_ID = ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "ai_lingoBot", "TRANSLATE_TRANSLATOR_PEREVODCHIK"]
 
 ALL_TEXT = [
     "🇺🇿 @nodavlattalim — nodavlat oliy ta’lim muassasalari haqida rasmiy xabarlar!",
@@ -24,30 +17,26 @@ ALL_TEXT = [
     "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live"
 ]
 
-def entities_right(msg: str, num: int):
-    added_text = ALL_TEXT[num]
-    full_text = msg + "\n\n" + added_text
+# Har bir maxsus emoji uchun offset va id
+CUSTOM_EMOJI_MAP = {
+    0: (4, 5325506731164312731),  # 🇺🇿
+    3: (2, 5350384878254826109),  # ✅
+    4: (2, 5350384878254826109),  # ✅
+}
 
-    emoji_data = {
-        0: ("🇺🇿", 5325506731164312731, 4),
-        3: ("✅️", 5350384878254826109, 2),
-        4: ("✅️", 5350384878254826109, 2)
-    }
 
-    if num not in emoji_data:
-        return None
+def entities_right(original_text: str, num: int):
+    if num not in CUSTOM_EMOJI_MAP:
+        return []
 
-    emoji_char, doc_id, emoji_len = emoji_data[num]
-    offset = full_text.find(emoji_char)
-
-    if offset == -1:
-        print(f"Emoji '{emoji_char}' not found in the text!")
-        return None
+    length, emoji_id = CUSTOM_EMOJI_MAP[num]
+    # offset should start after original text + 2 line breaks
+    offset = len(original_text) + 2
 
     return [
         MessageEntityCustomEmoji(
             offset=offset,
-            length=emoji_len,
-            document_id=doc_id
+            length=length,
+            document_id=emoji_id
         )
     ]
