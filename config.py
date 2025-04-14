@@ -29,14 +29,14 @@ def entities_right(original_text: str, num: int):
     if num not in CUSTOM_EMOJI_MAP:
         return []
 
-    length, emoji_id = CUSTOM_EMOJI_MAP[num]
-    # offset should start after original text + 2 line breaks
+    emoji_length, emoji_id = CUSTOM_EMOJI_MAP[num]
+
+    # new_text = original_text + '\n\n' + ALL_TEXT[num]
+    # Demak, offset — bu original_text uzunligi + 2 (yangi qatordan)
     offset = len(original_text) + 2
 
-    return [
-        MessageEntityCustomEmoji(
-            offset=offset,
-            length=length,
-            document_id=emoji_id
-        )
-    ]
+    return [MessageEntityCustomEmoji(
+        offset=offset,
+        length=emoji_length,
+        document_id=emoji_id
+    )]
