@@ -31,9 +31,8 @@ def entities_right(original_text: str, num: int):
 
     emoji_length, emoji_id = CUSTOM_EMOJI_MAP[num]
 
-    # new_text = original_text + '\n\n' + ALL_TEXT[num]
-    # Demak, offset — bu original_text uzunligi + 2 (yangi qatordan)
-    offset = len(original_text) + 2
+    # offset bu: original matnning real uzunligi + 2 (yangi qatordan keyin)
+    offset = calc_true_offset(original_text) + 2
 
     return [MessageEntityCustomEmoji(
         offset=offset,
