@@ -1,4 +1,3 @@
-# Configuration file
 from telethon.tl.types import MessageEntityCustomEmoji
 import emoji
 
@@ -8,11 +7,6 @@ SESSION_NAME = 'my_bot'  # Session name for the user bot
 
 admin = [619839487, 1918760732]
 
-# Extracted from the example message
-# NODAVLAT_ID = -1001569517955
-# ABITURIYENT_ID = -1002142308060
-# TALIM_ID = -1001502251130
-# TALIM24_ID = -1002321451080
 ALL_ID = ["nodavlattalim",
           "abitur24",
           "Talim_Live",
@@ -28,15 +22,18 @@ ALL_TEXT = [
     "✅️@Talim24uz",
     "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live"
 ]
+
 def entities_right(msg, num):
-    en = len(msg) if len(msg)==0 else len(msg)+2+len([char for char in msg if emoji.is_emoji(char)])
-    print(en)
+    # Emoji o'lchamlarini hisoblash va to'g'ri joylash
+    en = len(msg) if len(msg) == 0 else len(msg) + 2 + len([char for char in msg if emoji.is_emoji(char)])
+    print("Emoji uzunligi:", en)
+
     ALL_ENTITIES = [
         [  # 0-index: 🇺🇿
             MessageEntityCustomEmoji(
                 offset=en,
                 length=4,
-                document_id=5325506731164312731  # bu int shaklida yoziladi
+                document_id=5325506731164312731  # Emoji document_id
             )
         ],
         None,  # 1
