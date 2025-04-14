@@ -9,10 +9,19 @@ from telethon.tl.types import MessageEntityCustomEmoji
 
 def get_premium_emojis(message):
     entities = []
-    if message.entities:
-        entities.extend(message.entities)
-    if message.caption_entities:
-        entities.extend(message.caption_entities)
+
+    try:
+        if message.entities:
+            entities.extend(message.entities)
+    except AttributeError:
+        pass
+
+    try:
+        if message.caption_entities:
+            entities.extend(message.caption_entities)
+    except AttributeError:
+        pass
+
     return entities
 
 def is_original_post(event):
