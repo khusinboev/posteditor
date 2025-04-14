@@ -1,4 +1,9 @@
-from telethon.tl.types import MessageEntityCustomEmoji
+from telethon.tl.types import (
+    MessageEntityBold,
+    MessageEntityMention,
+    MessageEntityUrl,
+    MessageEntityCustomEmoji
+)
 import logging
 
 # Loggingni sozlash
@@ -39,17 +44,40 @@ CUSTOM_EMOJI_MAP = {
     4: (2, 5350384878254826109),  # ✅
 }
 
+# Matnga mos holda entity obyektlarini yaratish
 def entities_right(original_text: str, num: int):
     if num not in CUSTOM_EMOJI_MAP:
         return []
 
     emoji_length, emoji_id = CUSTOM_EMOJI_MAP[num]
-
-    # offset — bu original_text uzunligi + 2 (yangi qatordan)
-    offset =0 if len(original_text)==0 else len(original_text.encode('utf-16-le')) // 2 + 2  # bu aniqroq offset beradi
+    offset = 0 if len(original_text) == 0 else len(original_text.encode('utf-16-le')) // 2 + 2
 
     return [MessageEntityCustomEmoji(
         offset=offset,
         length=emoji_length,
         document_id=emoji_id
     )]
+
+# JSONdan kelgan entitylarni Telethon formatiga o‘tkazuvchi funksiya
+def parse_entities_from_json(json_entities):
+    entity_objects = []
+    for ent in json_entities:
+        offset = ent.get("offset", 0)
+        length = ent.get("length", 0)
+        etype = ent.get("type")
+
+        if etype == "bold":
+            entity_objects.append(MessageEntityBold(offset=offset, length=length))
+        elif etype == "mention":
+            entity_objects.append(MessageEntityMention(offset=offset, length=length))
+        elif etype == "url":
+            entity_objects.append(MessageEntityUrl(offset=offset, length=length))
+        elif etype == "custom_emoji":
+            emoji_id = int(ent.get("custom_emoji_id", 0))
+            entity_objects.append(MessageEntityCustomEmoji(
+                offset=offset,
+                length=length,
+                document_id=emoji_id
+            ))
+
+    return entity_objects
