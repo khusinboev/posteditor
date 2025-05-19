@@ -25,7 +25,7 @@ SESSION_NAME = 'my_bot'
 admin = [619839487, 1918760732]
 
 # Telegram kanal identifikatorlari
-ALL_ID = ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "ai_lingoBot", "TRANSLATE_TRANSLATOR_PEREVODCHIK"]
+ALL_ID = ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "ai_lingoBot", "nodavlattalim_uz"]
 
 # Kanalga qo'shilgan matnlar
 ALL_TEXT = [
@@ -34,7 +34,7 @@ ALL_TEXT = [
     "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live",
     "✅️@Talim24uz",
     "✅️@Talim24uz",
-    "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live"
+    "👉 nodavlattalim.uz – rasmiy kanali"
 ]
 
 # Har bir maxsus emoji uchun offset va id
