@@ -66,7 +66,7 @@ RAW_ENTITIES = {
         {"offset": 2, "length": 10, "type": "mention"},
     ],
     5: [  # Ta‘lim tizimiga oid yangiliklar:
-        {"offset": 0, "length": 33, "type": "bold"},
+        {"offset": 0, "length": 35, "type": "bold"},
         {"offset": 37, "length": 11, "type": "mention"}
     ]
 }
