@@ -139,6 +139,7 @@ async def process_single_message(event):
 # 🆕 Guruhlardan kelgan comment xabarlarni tutish va tekshirish
 @client.on(events.NewMessage())
 async def group_comment_handler(event):
+    print("girdi bashshina")
     if not event.is_group:
         return
 
