@@ -137,34 +137,10 @@ async def process_single_message(event):
 
 
 # 🆕 Guruhlardan kelgan comment xabarlarni tutish va tekshirish
-@client.on(events.NewMessage())
-async def group_comment_handler(event):
-    print("girdi bashshina")
-    if not event.is_group:
-        return
-
-    # Faqat userlar tomonidan yuborilgan xabarlar
-    if event.message.from_id is None or not event.message.reply_to:
-        return
-
-    reply = event.message.reply_to
-    try:
-        replied_msg = await event.get_reply_message()
-
-        # Faqat kanalga tegishli postga comment bo‘lsa
-        if replied_msg and replied_msg.is_channel:
-            channel_id = replied_msg.to_id.channel_id
-            group_id = event.chat_id
-            user_id = event.sender_id
-            post_id = replied_msg.id
-
-            # Agar bu kanal ID bizning ro'yxatdagi ALL_ID ichida bo‘lsa
-            # (Kanal usernames dan kanal ID olish kerak bo‘lsa, qo‘shimcha xarita yarating)
-            await send_basa(group_id, post_id, user_id)
-            log_info(f"Comment aniqlandi: User {user_id}, Post {post_id}, Guruh {group_id}")
-
-    except Exception as e:
-        log_error(f"Comment tekshiruvda xatolik: {e}")
+@client.on(events.MessageDeleted())
+async def deleted_comment_handler(event):
+    for msg_id in event.deleted_ids:
+        await send_basa(event.chat_id, msg_id)
 
 # send_basa funksiyadi
 async def send_basa(group_id: int, message_id: int):
