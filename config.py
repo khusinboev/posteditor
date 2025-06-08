@@ -6,6 +6,11 @@ from telethon.tl.types import (
 )
 import logging
 
+import psycopg2
+conn = psycopg2.connect(database="guruh", user="postgres", password="parol", host="localhost", port=5432)
+cur = conn.cursor()
+
+
 # Loggingni sozlash
 logging.basicConfig(level=logging.INFO, filename="bot_log.txt",
                     format="%(asctime)s - %(levelname)s - %(message)s")

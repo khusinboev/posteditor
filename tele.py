@@ -1,14 +1,20 @@
 from telethon import TelegramClient, events
-from config import API_ID, API_HASH, SESSION_NAME, ALL_ID, ALL_TEXT, entities_right, log_error, log_info
+from config import (
+    API_ID, API_HASH, SESSION_NAME,
+    ALL_ID, ALL_TEXT,
+    entities_right,
+    log_error, log_info, cur, conn
+)
 from collections import defaultdict
 import asyncio
-import logging
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
+# Albomli postlar uchun vaqtinchalik saqlovchi struktura
 album_buffer = defaultdict(list)
 album_timers = {}
 
+# Premium emojilarni olish
 def get_premium_emojis(message):
     entities = []
     try:
@@ -23,6 +29,7 @@ def get_premium_emojis(message):
         pass
     return entities
 
+# Post original ekanligini tekshiradi (forward emas va belgilangan kanal)
 def is_original_post(event):
     return (
         event.chat and
@@ -30,6 +37,7 @@ def is_original_post(event):
         not event.fwd_from
     )
 
+# Textli postni tahrirlash
 async def edit_text_message(event, num: int):
     try:
         original_text = event.message.message or ""
@@ -42,6 +50,7 @@ async def edit_text_message(event, num: int):
         new_text = f"{original_text}\n\n{add_text}"
         entities = get_premium_emojis(event.message)
         entities += entities_right(original_text, num)
+
         await client.edit_message(
             entity=ALL_ID[num],
             message=event.message.id,
@@ -53,6 +62,7 @@ async def edit_text_message(event, num: int):
     except Exception as e:
         log_error(f"Xatolik (text): {e}")
 
+# Media post captionini tahrirlash
 async def edit_caption_message(event, num: int):
     try:
         caption = event.message.message or ""
@@ -77,15 +87,17 @@ async def edit_caption_message(event, num: int):
     except Exception as e:
         log_error(f"Xatolik (caption): {e}")
 
+# Asosiy postlarni (yangi xabarlarni) tutish
 @client.on(events.NewMessage(chats=ALL_ID))
 async def handler(event):
     if not is_original_post(event):
         return
+
     with open("data.txt", "r", encoding='utf-8') as file:
         content = file.read().strip()
-
     if content != "/start":
         return
+
     grouped_id = event.message.grouped_id
 
     if grouped_id:
@@ -98,6 +110,7 @@ async def handler(event):
     else:
         await process_single_message(event)
 
+# Albomli postni qayta ishlash
 async def process_album(grouped_id):
     events = album_buffer.pop(grouped_id, [])
     if not events:
@@ -106,19 +119,91 @@ async def process_album(grouped_id):
     main_event = events[0]
     username = main_event.chat.username
     num = ALL_ID.index(username)
+
     if main_event.message.message:
         await edit_text_message(main_event, num)
     else:
         await edit_caption_message(main_event, num)
 
+# Yakka xabarni qayta ishlash
 async def process_single_message(event):
     username = event.chat.username
     num = ALL_ID.index(username)
+
     if event.message.message:
         await edit_text_message(event, num)
     elif event.message.media:
         await edit_caption_message(event, num)
 
+
+# 🆕 Guruhlardan kelgan comment xabarlarni tutish va tekshirish
+@client.on(events.NewMessage())
+async def group_comment_handler(event):
+    if not event.is_group:
+        return
+
+    # Faqat userlar tomonidan yuborilgan xabarlar
+    if event.message.from_id is None or not event.message.reply_to:
+        return
+
+    reply = event.message.reply_to
+    try:
+        replied_msg = await event.get_reply_message()
+
+        # Faqat kanalga tegishli postga comment bo‘lsa
+        if replied_msg and replied_msg.is_channel:
+            channel_id = replied_msg.to_id.channel_id
+            group_id = event.chat_id
+            user_id = event.sender_id
+            post_id = replied_msg.id
+
+            # Agar bu kanal ID bizning ro'yxatdagi ALL_ID ichida bo‘lsa
+            # (Kanal usernames dan kanal ID olish kerak bo‘lsa, qo‘shimcha xarita yarating)
+            await send_basa(group_id, post_id, user_id)
+            log_info(f"Comment aniqlandi: User {user_id}, Post {post_id}, Guruh {group_id}")
+
+    except Exception as e:
+        log_error(f"Comment tekshiruvda xatolik: {e}")
+
+# send_basa funksiyadi
+async def send_basa(group_id: int, message_id: int):
+    try:
+        # 1. comment_messages dan ma'lumotni olish
+        cur.execute("""
+            SELECT user_id, length FROM comment_messages
+            WHERE group_id = %s AND message_id = %s
+        """, (group_id, message_id))
+        result = cur.fetchone()
+
+        if not result:
+            print(f"[!] message_id={message_id} topilmadi")
+            return
+
+        user_id, length = result
+
+        # 2. comment_messages dan yozuvni o‘chirish
+        cur.execute("""
+            DELETE FROM comment_messages
+            WHERE group_id = %s AND message_id = %s
+        """, (group_id, message_id))
+
+        # 3. user_comments dan count va lengths ni yangilash
+        cur.execute("""
+            UPDATE user_comments
+            SET count = count - 1,
+                lengths = lengths - %s
+            WHERE group_id = %s AND user_id = %s
+        """, (length, group_id, user_id))
+
+        conn.commit()
+        print(f"[✔] O‘chirildi: user_id={user_id}, message_id={message_id}, length={length}")
+
+    except Exception as e:
+        conn.rollback()
+        print(f"[Xatolik] send_basa: {e}")
+
+
+# Botni ishga tushuruvchi funksiya
 async def main():
     while True:
         try:
