@@ -137,7 +137,7 @@ async def process_single_message(event):
 
 
 # 🆕 Guruhlardan kelgan comment xabarlarni tutish va tekshirish
-@client.on(events.MessageDeleted())
+@client.on(events.MessageDeleted(chats=["NT_muhokama", "kepquay"]))
 async def deleted_comment_handler(event):
     await send_basa(event.chat_id, event.deleted_ids)
 
