@@ -139,45 +139,48 @@ async def process_single_message(event):
 # 🆕 Guruhlardan kelgan comment xabarlarni tutish va tekshirish
 @client.on(events.MessageDeleted())
 async def deleted_comment_handler(event):
-    for msg_id in event.deleted_ids:
-        await send_basa(event.chat_id, msg_id)
+    await send_basa(event.chat_id, event.deleted_ids)
 
 # send_basa funksiyadi
-async def send_basa(group_id: int, message_id: int):
+async def send_basa(group_id: int, msg_ids: list[int]):
     try:
-        # 1. comment_messages dan ma'lumotni olish
+        # 1. Hammasini olish
         cur.execute("""
-            SELECT user_id, length FROM comment_messages
-            WHERE group_id = %s AND message_id = %s
-        """, (group_id, message_id))
-        result = cur.fetchone()
+            SELECT user_id, message_id, length FROM comment_messages
+            WHERE group_id = %s AND message_id = ANY(%s)
+        """, (group_id, msg_ids))
+        results = cur.fetchall()
 
-        if not result:
-            print(f"[!] message_id={message_id} topilmadi")
+        if not results:
+            print("[!] Hech narsa topilmadi")
             return
 
-        user_id, length = result
+        user_stats = defaultdict(lambda: [0, 0])  # {user_id: [count, length]}
+        for user_id, message_id, length in results:
+            user_stats[user_id][0] += 1
+            user_stats[user_id][1] += length
 
-        # 2. comment_messages dan yozuvni o‘chirish
+        # 2. comment_messages dan o‘chirish
         cur.execute("""
             DELETE FROM comment_messages
-            WHERE group_id = %s AND message_id = %s
-        """, (group_id, message_id))
+            WHERE group_id = %s AND message_id = ANY(%s)
+        """, (group_id, msg_ids))
 
-        # 3. user_comments dan count va lengths ni yangilash
-        cur.execute("""
-            UPDATE user_comments
-            SET count = count - 1,
-                lengths = lengths - %s
-            WHERE group_id = %s AND user_id = %s
-        """, (length, group_id, user_id))
+        # 3. user_comments yangilash
+        for user_id, (count, total_length) in user_stats.items():
+            cur.execute("""
+                UPDATE user_comments
+                SET count = count - %s,
+                    lengths = lengths - %s
+                WHERE group_id = %s AND user_id = %s
+            """, (count, total_length, group_id, user_id))
 
         conn.commit()
-        print(f"[✔] O‘chirildi: user_id={user_id}, message_id={message_id}, length={length}")
+        print(f"[✔] Batch o‘chirildi: {len(results)} ta xabar")
 
     except Exception as e:
         conn.rollback()
-        print(f"[Xatolik] send_basa: {e}")
+        print(f"[Xatolik] send_basa_batch: {e}")
 
 
 # Botni ishga tushuruvchi funksiya
