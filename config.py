@@ -35,7 +35,7 @@ ALL_ID = ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "ai_lingoBot",
 # Kanalga qo'shilgan matnlar
 ALL_TEXT = [
     "🇺🇿 @nodavlattalim — nodavlat oliy ta’lim muassasalari haqida rasmiy xabarlar!",
-    "Safimizga qo'shiling👇\nhttps://t.me/+Xa6LRjERxwo4Njdi",
+    "Safimizga qo'shiling👇\nhttps://t.me/+Xa6LRjERxwo4Njdi\nhttps://t.me/+Xa6LRjERxwo4Njdi",
     "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live",
     "✅️@Talim24uz",
     "✅️@Talim24uz",
