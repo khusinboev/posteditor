@@ -4,9 +4,12 @@ from aiogram.filters import Command
 from config import admin, BOT_TOKEN
 from logging_setup import setup_logging
 import logging
+from pathlib import Path
 
 setup_logging()
 logger = logging.getLogger("posteditor.bot")
+BASE_DIR = Path(__file__).resolve().parent
+DATA_FILE = BASE_DIR / "data.txt"
 
 # Bot va dispatcher yaratish
 bot = Bot(token=BOT_TOKEN)
@@ -17,7 +20,7 @@ dp = Dispatcher()
 async def cmd_start(message: types.Message):
     if message.chat.id in admin:
         # data.txt fayliga /start yozish
-        with open("data.txt", "w") as file:
+        with open(DATA_FILE, "w", encoding="utf-8") as file:
             file.write("/start")
         logger.info("/start qabul qilindi: %s", message.chat.id)
         await message.answer("Boshlandi.")
@@ -27,7 +30,7 @@ async def cmd_start(message: types.Message):
 async def cmd_stop(message: types.Message):
     if message.chat.id in admin:
         # data.txt fayliga /stop yozish
-        with open("data.txt", "w") as file:
+        with open(DATA_FILE, "w", encoding="utf-8") as file:
             file.write("/stop")
         logger.info("/stop qabul qilindi: %s", message.chat.id)
         await message.answer("To'xtadi.")

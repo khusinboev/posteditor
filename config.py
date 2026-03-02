@@ -45,7 +45,7 @@ def log_info(message):
 # API sozlamalari
 API_ID = int(os.getenv("API_ID", "12345678"))
 API_HASH = os.getenv("API_HASH", "abcdef1234567890abcdef1234567890")
-SESSION_NAME = os.getenv("SESSION_NAME", "my_bot")
+SESSION_NAME = str((BASE_DIR / os.getenv("SESSION_NAME", "my_bot")).resolve())
 BOT_TOKEN = os.getenv("BOT_TOKEN", "BOT_TOKEN")
 
 # Adminlar
@@ -65,14 +65,19 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "parol")
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 
-conn = psycopg2.connect(
-    database=DB_NAME,
-    user=DB_USER,
-    password=DB_PASSWORD,
-    host=DB_HOST,
-    port=DB_PORT,
-)
-cur = conn.cursor()
+conn = None
+cur = None
+try:
+    conn = psycopg2.connect(
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        host=DB_HOST,
+        port=DB_PORT,
+    )
+    cur = conn.cursor()
+except Exception as e:
+    logger.exception("PostgreSQL ulanishida xatolik: %s", e)
 
 # Kanalga qo'shilgan matnlar
 ALL_TEXT = [

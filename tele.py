@@ -8,11 +8,14 @@ from config import (
 from collections import defaultdict
 import asyncio
 import logging
+from pathlib import Path
 
 from logging_setup import setup_logging
 
 setup_logging()
 logger = logging.getLogger("posteditor.tele")
+BASE_DIR = Path(__file__).resolve().parent
+DATA_FILE = BASE_DIR / "data.txt"
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
@@ -37,11 +40,18 @@ def get_premium_emojis(message):
 
 # Post original ekanligini tekshiradi (forward emas va belgilangan kanal)
 def is_original_post(event):
-    return (
-        event.chat and
-        event.chat.username in ALL_ID and
-        not event.fwd_from
-    )
+    chat_username = getattr(getattr(event, "chat", None), "username", None)
+    is_allowed = bool(chat_username and chat_username in ALL_ID)
+    is_forwarded = bool(event.fwd_from)
+    if not is_allowed or is_forwarded:
+        logger.info(
+            "Event skip (original emas): chat_username=%s, allowed=%s, forwarded=%s, message_id=%s",
+            chat_username,
+            is_allowed,
+            is_forwarded,
+            getattr(getattr(event, "message", None), "id", None),
+        )
+    return is_allowed and not is_forwarded
 
 # Textli postni tahrirlash
 async def edit_text_message(event, num: int):
@@ -96,12 +106,27 @@ async def edit_caption_message(event, num: int):
 # Asosiy postlarni (yangi xabarlarni) tutish
 @client.on(events.NewMessage(chats=ALL_ID))
 async def handler(event):
+    logger.info(
+        "NewMessage event: chat_id=%s, username=%s, message_id=%s, grouped_id=%s",
+        event.chat_id,
+        getattr(getattr(event, "chat", None), "username", None),
+        event.message.id,
+        event.message.grouped_id,
+    )
+
     if not is_original_post(event):
         return
 
-    with open("data.txt", "r", encoding='utf-8') as file:
-        content = file.read().strip()
+    try:
+        with open(DATA_FILE, "r", encoding='utf-8') as file:
+            content = file.read().strip()
+    except FileNotFoundError:
+        logger.warning("data.txt topilmadi: %s", DATA_FILE)
+        return
+
+    logger.info("State content: '%s'", content)
     if content != "/start":
+        logger.info("Event skip (state /start emas): message_id=%s", event.message.id)
         return
 
     grouped_id = event.message.grouped_id
@@ -124,7 +149,11 @@ async def process_album(grouped_id):
 
     main_event = events[0]
     username = main_event.chat.username
-    num = ALL_ID.index(username)
+    try:
+        num = ALL_ID.index(username)
+    except ValueError:
+        logger.warning("ALL_ID ichidan topilmadi (album): username=%s", username)
+        return
 
     if main_event.message.message:
         await edit_text_message(main_event, num)
@@ -134,7 +163,11 @@ async def process_album(grouped_id):
 # Yakka xabarni qayta ishlash
 async def process_single_message(event):
     username = event.chat.username
-    num = ALL_ID.index(username)
+    try:
+        num = ALL_ID.index(username)
+    except ValueError:
+        logger.warning("ALL_ID ichidan topilmadi (single): username=%s", username)
+        return
 
     if event.message.message:
         await edit_text_message(event, num)
@@ -149,6 +182,10 @@ async def deleted_comment_handler(event):
 
 # send_basa funksiyadi
 async def send_basa(group_id: int, msg_ids: list[int]):
+    if conn is None or cur is None:
+        logger.error("DB ulanmagan: send_basa bajarilmadi. group_id=%s, msg_ids=%s", group_id, msg_ids)
+        return
+
     try:
         # 1. Hammasini olish
         cur.execute("""
@@ -193,8 +230,10 @@ async def send_basa(group_id: int, msg_ids: list[int]):
 async def main():
     while True:
         try:
-            log_info("Bot ishga tushdi...")
+            log_info(f"Bot ishga tushdi... session={SESSION_NAME}, data_file={DATA_FILE}")
             await client.start()
+            me = await client.get_me()
+            logger.info("Telethon authorized: id=%s username=%s", me.id, me.username)
             await client.run_until_disconnected()
         except Exception as e:
             log_error(f"Bot o'chdi. Xato: {str(e)}. 5 soniyadan keyin qayta ishga tushiriladi.")
