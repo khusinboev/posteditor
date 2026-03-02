@@ -10,6 +10,7 @@ from collections import defaultdict
 import asyncio
 import logging
 from pathlib import Path
+from typing import Optional
 
 from logging_setup import setup_logging
 
@@ -34,6 +35,22 @@ album_timers = {}
 
 # chat_id -> entity cache (username resolve qilishni kamaytirish uchun)
 _entity_cache: dict = {}
+
+
+def _normalize_channel_username(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    return value.strip().lstrip("@").lower()
+
+
+# kanalni topish uchun keshlar
+_channel_index_by_username: dict[str, int] = {}
+for i, raw_username in enumerate(ALL_ID):
+    normalized_username = _normalize_channel_username(raw_username)
+    if normalized_username:
+        _channel_index_by_username[normalized_username] = i
+
+_channel_index_by_id: dict[int, int] = {}
 
 
 # ─────────────────────────────────────────────
@@ -77,7 +94,7 @@ def get_premium_emojis(message):
 # ─────────────────────────────────────────────
 # Post original ekanligini tekshiradi
 # ─────────────────────────────────────────────
-def is_original_post(event):
+def is_original_post(event, channel_index: Optional[int]):
     """
     FIX: Avval chat_username None bo'lsa warn chiqarib False qaytaradi.
     Katta kanallarda chat entity ba'zan yuklanmagan bo'ladi.
@@ -85,27 +102,46 @@ def is_original_post(event):
     chat = getattr(event, "chat", None)
     chat_username = getattr(chat, "username", None)
 
-    if chat_username is None:
-        # Katta kanallarda bu holat bo'lishi mumkin
-        logger.warning(
-            "chat.username topilmadi, skip: chat_id=%s, message_id=%s",
-            getattr(event, "chat_id", None),
-            getattr(getattr(event, "message", None), "id", None),
-        )
-        return False
-
-    is_allowed = chat_username in ALL_ID
+    is_allowed = channel_index is not None
     is_forwarded = bool(event.fwd_from)
 
     if not is_allowed or is_forwarded:
         logger.info(
-            "Event skip: chat_username=%s, allowed=%s, forwarded=%s, message_id=%s",
+            "Event skip: chat_id=%s, chat_username=%s, allowed=%s, forwarded=%s, message_id=%s",
+            getattr(event, "chat_id", None),
             chat_username,
             is_allowed,
             is_forwarded,
             getattr(getattr(event, "message", None), "id", None),
         )
     return is_allowed and not is_forwarded
+
+
+async def resolve_channel_index(event) -> Optional[int]:
+    chat_id = getattr(event, "chat_id", None)
+    if chat_id in _channel_index_by_id:
+        return _channel_index_by_id[chat_id]
+
+    chat = getattr(event, "chat", None)
+    normalized_username = _normalize_channel_username(getattr(chat, "username", None))
+    if normalized_username in _channel_index_by_username:
+        index = _channel_index_by_username[normalized_username]
+        if chat_id is not None:
+            _channel_index_by_id[chat_id] = index
+        return index
+
+    if chat_id is not None:
+        try:
+            entity = await get_entity_cached(chat_id)
+            normalized_entity_username = _normalize_channel_username(getattr(entity, "username", None))
+            if normalized_entity_username in _channel_index_by_username:
+                index = _channel_index_by_username[normalized_entity_username]
+                _channel_index_by_id[chat_id] = index
+                return index
+        except Exception as e:
+            logger.warning("resolve_channel_index xatolik: chat_id=%s, xato=%s", chat_id, e)
+
+    return None
 
 
 # ─────────────────────────────────────────────
@@ -225,17 +261,20 @@ async def edit_caption_message(event, num: int, retry: int = 0):
 # ─────────────────────────────────────────────
 # Asosiy handler — yangi postlarni tutadi
 # ─────────────────────────────────────────────
-@client.on(events.NewMessage(chats=ALL_ID))
+@client.on(events.NewMessage())
 async def handler(event):
+    channel_index = await resolve_channel_index(event)
+
     logger.info(
-        "NewMessage event: chat_id=%s, username=%s, message_id=%s, grouped_id=%s",
+        "NewMessage event: chat_id=%s, username=%s, index=%s, message_id=%s, grouped_id=%s",
         event.chat_id,
         getattr(getattr(event, "chat", None), "username", None),
+        channel_index,
         event.message.id,
         event.message.grouped_id,
     )
 
-    if not is_original_post(event):
+    if not is_original_post(event, channel_index):
         return
 
     try:
@@ -253,7 +292,7 @@ async def handler(event):
     grouped_id = event.message.grouped_id
 
     if grouped_id:
-        album_buffer[grouped_id].append(event)
+        album_buffer[grouped_id].append((event, channel_index))
         # FIX: ensure_future — handler bloklanmaydi, event loop to'silmaydi
         # Avvalgi kodda `await asyncio.sleep(1.5)` handler ichida edi —
         # bu katta kanallarda keyingi eventlarni kechiktirardi.
@@ -262,7 +301,7 @@ async def handler(event):
             asyncio.ensure_future(handle_album_with_delay(grouped_id))
     else:
         # Yakka xabarni ham ensure_future bilan — handler zudlik bilan qaytadi
-        asyncio.ensure_future(process_single_message(event))
+        asyncio.ensure_future(process_single_message(event, channel_index))
 
 
 # ─────────────────────────────────────────────
@@ -286,45 +325,29 @@ async def process_album(grouped_id):
     if not evts:
         return
 
-    main_event = evts[0]
-    username = getattr(getattr(main_event, "chat", None), "username", None)
-
-    if username is None:
-        logger.warning("process_album: chat.username topilmadi, chat_id=%s", main_event.chat_id)
-        return
-
-    try:
-        num = ALL_ID.index(username)
-    except ValueError:
-        logger.warning("ALL_ID ichidan topilmadi (album): username=%s", username)
+    main_event, channel_index = evts[0]
+    if channel_index is None:
+        logger.warning("process_album: kanal aniqlanmadi, chat_id=%s", main_event.chat_id)
         return
 
     if main_event.message.message:
-        await edit_text_message(main_event, num)
+        await edit_text_message(main_event, channel_index)
     else:
-        await edit_caption_message(main_event, num)
+        await edit_caption_message(main_event, channel_index)
 
 
 # ─────────────────────────────────────────────
 # Yakka xabarni qayta ishlash
 # ─────────────────────────────────────────────
-async def process_single_message(event):
-    username = getattr(getattr(event, "chat", None), "username", None)
-
-    if username is None:
-        logger.warning("process_single_message: chat.username topilmadi, chat_id=%s", event.chat_id)
-        return
-
-    try:
-        num = ALL_ID.index(username)
-    except ValueError:
-        logger.warning("ALL_ID ichidan topilmadi (single): username=%s", username)
+async def process_single_message(event, channel_index: Optional[int]):
+    if channel_index is None:
+        logger.warning("process_single_message: kanal aniqlanmadi, chat_id=%s", event.chat_id)
         return
 
     if event.message.message:
-        await edit_text_message(event, num)
+        await edit_text_message(event, channel_index)
     elif event.message.media:
-        await edit_caption_message(event, num)
+        await edit_caption_message(event, channel_index)
 
 
 # ─────────────────────────────────────────────
@@ -397,11 +420,21 @@ async def main():
             # Barcha kanallar uchun entity oldindan keshlash
             # Katta kanallarda birinchi post tezroq tahrirlanadi
             logger.info("Kanallar entity keshlanmoqda...")
-            for channel_username in ALL_ID:
+            for index, channel_username in enumerate(ALL_ID):
                 try:
                     entity = await client.get_entity(channel_username)
                     _entity_cache[entity.id] = entity
-                    logger.info("Keshlandi: @%s -> id=%s", channel_username, entity.id)
+
+                    normalized_username = _normalize_channel_username(channel_username)
+                    if normalized_username:
+                        _channel_index_by_username[normalized_username] = index
+
+                    entity_username = _normalize_channel_username(getattr(entity, "username", None))
+                    if entity_username:
+                        _channel_index_by_username[entity_username] = index
+
+                    _channel_index_by_id[entity.id] = index
+                    logger.info("Keshlandi: @%s -> id=%s, index=%s", channel_username, entity.id, index)
                 except Exception as e:
                     logger.warning("Entity olinmadi (@%s): %s", channel_username, e)
 
