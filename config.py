@@ -4,33 +4,75 @@ from telethon.tl.types import (
     MessageEntityTextUrl,
     MessageEntityCustomEmoji
 )
+import os
 import logging
+from pathlib import Path
+
+from dotenv import load_dotenv
 
 import psycopg2
-conn = psycopg2.connect(database="guruh", user="postgres", password="parol", host="localhost", port=5432)
-cur = conn.cursor()
 
 
-# Loggingni sozlash
-logging.basicConfig(level=logging.INFO, filename="bot_log.txt",
-                    format="%(asctime)s - %(levelname)s - %(message)s")
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
+
+def _to_int_list(raw_value: str, default: list[int]) -> list[int]:
+    if not raw_value:
+        return default
+    values = []
+    for item in raw_value.split(","):
+        item = item.strip()
+        if item:
+            values.append(int(item))
+    return values
+
+
+def _to_str_list(raw_value: str, default: list[str]) -> list[str]:
+    if not raw_value:
+        return default
+    return [item.strip() for item in raw_value.split(",") if item.strip()]
+
+
+logger = logging.getLogger("posteditor")
 
 def log_error(message):
-    logging.error(message)
+    logger.error(message)
 
 def log_info(message):
-    logging.info(message)
+    logger.info(message)
 
 # API sozlamalari
-API_ID = 29595868
-API_HASH = 'a09a969ce2b4e13726812ab8e696cd18'
-SESSION_NAME = 'my_bot'
+API_ID = int(os.getenv("API_ID", "12345678"))
+API_HASH = os.getenv("API_HASH", "abcdef1234567890abcdef1234567890")
+SESSION_NAME = os.getenv("SESSION_NAME", "my_bot")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "BOT_TOKEN")
 
 # Adminlar
-admin = [619839487, 1918760732]
+admin = _to_int_list(os.getenv("ADMIN_IDS", ""), [619839487, 1918760732])
 
 # Telegram kanal identifikatorlari
-ALL_ID = ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "ai_lingoBot", "nodavlattalim_uz"]
+ALL_ID = _to_str_list(
+    os.getenv("ALL_ID", ""),
+    ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "ai_lingoBot", "nodavlattalim_uz"]
+)
+
+
+# DB sozlamalari
+DB_NAME = os.getenv("DB_NAME", "guruh")
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "parol")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = int(os.getenv("DB_PORT", "5432"))
+
+conn = psycopg2.connect(
+    database=DB_NAME,
+    user=DB_USER,
+    password=DB_PASSWORD,
+    host=DB_HOST,
+    port=DB_PORT,
+)
+cur = conn.cursor()
 
 # Kanalga qo'shilgan matnlar
 ALL_TEXT = [

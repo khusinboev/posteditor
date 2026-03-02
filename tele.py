@@ -7,6 +7,12 @@ from config import (
 )
 from collections import defaultdict
 import asyncio
+import logging
+
+from logging_setup import setup_logging
+
+setup_logging()
+logger = logging.getLogger("posteditor.tele")
 
 client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
 
@@ -152,7 +158,7 @@ async def send_basa(group_id: int, msg_ids: list[int]):
         results = cur.fetchall()
 
         if not results:
-            print("[!] Hech narsa topilmadi")
+            logger.info("Hech narsa topilmadi: group_id=%s, msg_ids=%s", group_id, msg_ids)
             return
 
         user_stats = defaultdict(lambda: [0, 0])  # {user_id: [count, length]}
@@ -176,11 +182,11 @@ async def send_basa(group_id: int, msg_ids: list[int]):
             """, (count, total_length, group_id, user_id))
 
         conn.commit()
-        print(f"[✔] Batch o‘chirildi: {len(results)} ta xabar")
+        logger.info("Batch o‘chirildi: %s ta xabar", len(results))
 
     except Exception as e:
         conn.rollback()
-        print(f"[Xatolik] send_basa_batch: {e}")
+        logger.exception("send_basa_batch xatolik: %s", e)
 
 
 # Botni ishga tushuruvchi funksiya

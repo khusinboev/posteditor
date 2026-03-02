@@ -1,10 +1,12 @@
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-from config import admin
+from config import admin, BOT_TOKEN
+from logging_setup import setup_logging
+import logging
 
-# Bot tokenini shu yerga yozing
-BOT_TOKEN = "8087409160:AAFI_fNDhesvlcRCzDrcRo4tyk5aaYZPGkE"
+setup_logging()
+logger = logging.getLogger("posteditor.bot")
 
 # Bot va dispatcher yaratish
 bot = Bot(token=BOT_TOKEN)
@@ -17,6 +19,7 @@ async def cmd_start(message: types.Message):
         # data.txt fayliga /start yozish
         with open("data.txt", "w") as file:
             file.write("/start")
+        logger.info("/start qabul qilindi: %s", message.chat.id)
         await message.answer("Boshlandi.")
 
 # /stop komandasi uchun handler
@@ -26,6 +29,7 @@ async def cmd_stop(message: types.Message):
         # data.txt fayliga /stop yozish
         with open("data.txt", "w") as file:
             file.write("/stop")
+        logger.info("/stop qabul qilindi: %s", message.chat.id)
         await message.answer("To'xtadi.")
 
 # Asosiy funksiya

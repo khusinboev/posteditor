@@ -1,0 +1,6 @@
+.env
+data.txt
+my_bot.session
+.venv/
+.idea/
+logs/
