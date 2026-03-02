@@ -1,4 +1,5 @@
 from telethon import TelegramClient, events
+from telethon.errors import FloodWaitError, MessageNotModifiedError, ChatWriteForbiddenError
 from config import (
     API_ID, API_HASH, SESSION_NAME,
     ALL_ID, ALL_TEXT,
@@ -17,13 +18,47 @@ logger = logging.getLogger("posteditor.tele")
 BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR / "data.txt"
 
-client = TelegramClient(SESSION_NAME, API_ID, API_HASH)
+client = TelegramClient(
+    SESSION_NAME,
+    API_ID,
+    API_HASH,
+    # Katta kanallarda ulanish sifatini oshirish uchun
+    connection_retries=10,
+    retry_delay=3,
+    timeout=30,
+)
 
 # Albomli postlar uchun vaqtinchalik saqlovchi struktura
 album_buffer = defaultdict(list)
 album_timers = {}
 
+# chat_id -> entity cache (username resolve qilishni kamaytirish uchun)
+_entity_cache: dict = {}
+
+
+# ─────────────────────────────────────────────
+# Yordamchi: entity cache (katta kanallarda tez ishlash)
+# ─────────────────────────────────────────────
+async def get_entity_cached(chat_id: int):
+    """
+    chat_id orqali entity oladi va keshda saqlaydi.
+    Har safar username resolve qilmaydi — katta kanallarda
+    bu kechikishning asosiy sababi edi.
+    """
+    if chat_id not in _entity_cache:
+        try:
+            entity = await client.get_entity(chat_id)
+            _entity_cache[chat_id] = entity
+            logger.info("Entity keshlandi: chat_id=%s", chat_id)
+        except Exception as e:
+            logger.warning("Entity olinmadi (chat_id=%s): %s", chat_id, e)
+            return chat_id  # fallback: to'g'ridan-to'g'ri chat_id ishlatamiz
+    return _entity_cache[chat_id]
+
+
+# ─────────────────────────────────────────────
 # Premium emojilarni olish
+# ─────────────────────────────────────────────
 def get_premium_emojis(message):
     entities = []
     try:
@@ -38,14 +73,33 @@ def get_premium_emojis(message):
         pass
     return entities
 
-# Post original ekanligini tekshiradi (forward emas va belgilangan kanal)
+
+# ─────────────────────────────────────────────
+# Post original ekanligini tekshiradi
+# ─────────────────────────────────────────────
 def is_original_post(event):
-    chat_username = getattr(getattr(event, "chat", None), "username", None)
-    is_allowed = bool(chat_username and chat_username in ALL_ID)
+    """
+    FIX: Avval chat_username None bo'lsa warn chiqarib False qaytaradi.
+    Katta kanallarda chat entity ba'zan yuklanmagan bo'ladi.
+    """
+    chat = getattr(event, "chat", None)
+    chat_username = getattr(chat, "username", None)
+
+    if chat_username is None:
+        # Katta kanallarda bu holat bo'lishi mumkin
+        logger.warning(
+            "chat.username topilmadi, skip: chat_id=%s, message_id=%s",
+            getattr(event, "chat_id", None),
+            getattr(getattr(event, "message", None), "id", None),
+        )
+        return False
+
+    is_allowed = chat_username in ALL_ID
     is_forwarded = bool(event.fwd_from)
+
     if not is_allowed or is_forwarded:
         logger.info(
-            "Event skip (original emas): chat_username=%s, allowed=%s, forwarded=%s, message_id=%s",
+            "Event skip: chat_username=%s, allowed=%s, forwarded=%s, message_id=%s",
             chat_username,
             is_allowed,
             is_forwarded,
@@ -53,8 +107,17 @@ def is_original_post(event):
         )
     return is_allowed and not is_forwarded
 
+
+# ─────────────────────────────────────────────
 # Textli postni tahrirlash
-async def edit_text_message(event, num: int):
+# ─────────────────────────────────────────────
+async def edit_text_message(event, num: int, retry: int = 0):
+    """
+    FIX 1: entity=chat_id (raqamli) — username resolve qilmaydi, tez ishlaydi.
+    FIX 2: FloodWaitError ushlaydi va kutib qayta urinadi.
+    FIX 3: MessageNotModifiedError — xatosiz o'tkazib yuboradi.
+    FIX 4: ChatWriteForbiddenError — ruxsat yo'qligini aniq log qiladi.
+    """
     try:
         original_text = event.message.message or ""
         add_text = ALL_TEXT[num]
@@ -67,19 +130,52 @@ async def edit_text_message(event, num: int):
         entities = get_premium_emojis(event.message)
         entities += entities_right(original_text, num)
 
+        # FIX: username o'rniga chat_id — katta kanallarda ancha tez
+        entity = await get_entity_cached(event.chat_id)
+
         await client.edit_message(
-            entity=ALL_ID[num],
+            entity=entity,
             message=event.message.id,
             text=new_text,
             link_preview=False,
             formatting_entities=entities,
         )
         log_info(f"Tahrirlandi (text): {event.message.id}")
-    except Exception as e:
-        log_error(f"Xatolik (text): {e}")
 
+    except FloodWaitError as e:
+        # Telegram bizni chekladi — kutib qayta urinish
+        wait = e.seconds + 2
+        logger.warning(
+            "FloodWait (text): %s soniya kutilmoqda... message_id=%s",
+            wait, event.message.id
+        )
+        await asyncio.sleep(wait)
+        if retry < 3:
+            await edit_text_message(event, num, retry=retry + 1)
+        else:
+            log_error(f"FloodWait: 3 urinishdan keyin ham muvaffaqiyatsiz (text): {event.message.id}")
+
+    except MessageNotModifiedError:
+        # Matn o'zgartirilmagan — xato emas, shunchaki o'tkazib yuboramiz
+        log_info(f"Matn o'zgartirilmagan (text): {event.message.id}")
+
+    except ChatWriteForbiddenError:
+        log_error(f"Kanalga yozish taqiqlangan (text): chat_id={event.chat_id}")
+
+    except Exception as e:
+        log_error(f"Xatolik (text): {type(e).__name__}: {e} | message_id={event.message.id}")
+
+
+# ─────────────────────────────────────────────
 # Media post captionini tahrirlash
-async def edit_caption_message(event, num: int):
+# ─────────────────────────────────────────────
+async def edit_caption_message(event, num: int, retry: int = 0):
+    """
+    FIX 1: entity=chat_id (raqamli) — tez ishlaydi.
+    FIX 2: FloodWaitError ushlaydi va kutib qayta urinadi.
+    FIX 3: MessageNotModifiedError — xatosiz o'tkazib yuboradi.
+    FIX 4: ChatWriteForbiddenError — ruxsat yo'qligini aniq log qiladi.
+    """
     try:
         caption = event.message.message or ""
         add_text = ALL_TEXT[num]
@@ -92,18 +188,43 @@ async def edit_caption_message(event, num: int):
         entities = get_premium_emojis(event.message)
         entities += entities_right(caption, num)
 
+        # FIX: username o'rniga chat_id
+        entity = await get_entity_cached(event.chat_id)
+
         await client.edit_message(
-            entity=ALL_ID[num],
+            entity=entity,
             message=event.message.id,
             text=new_caption,
             link_preview=False,
-            formatting_entities=entities
+            formatting_entities=entities,
         )
         log_info(f"Tahrirlandi (caption): {event.message.id}")
-    except Exception as e:
-        log_error(f"Xatolik (caption): {e}")
 
-# Asosiy postlarni (yangi xabarlarni) tutish
+    except FloodWaitError as e:
+        wait = e.seconds + 2
+        logger.warning(
+            "FloodWait (caption): %s soniya kutilmoqda... message_id=%s",
+            wait, event.message.id
+        )
+        await asyncio.sleep(wait)
+        if retry < 3:
+            await edit_caption_message(event, num, retry=retry + 1)
+        else:
+            log_error(f"FloodWait: 3 urinishdan keyin ham muvaffaqiyatsiz (caption): {event.message.id}")
+
+    except MessageNotModifiedError:
+        log_info(f"Matn o'zgartirilmagan (caption): {event.message.id}")
+
+    except ChatWriteForbiddenError:
+        log_error(f"Kanalga yozish taqiqlangan (caption): chat_id={event.chat_id}")
+
+    except Exception as e:
+        log_error(f"Xatolik (caption): {type(e).__name__}: {e} | message_id={event.message.id}")
+
+
+# ─────────────────────────────────────────────
+# Asosiy handler — yangi postlarni tutadi
+# ─────────────────────────────────────────────
 @client.on(events.NewMessage(chats=ALL_ID))
 async def handler(event):
     logger.info(
@@ -118,7 +239,7 @@ async def handler(event):
         return
 
     try:
-        with open(DATA_FILE, "r", encoding='utf-8') as file:
+        with open(DATA_FILE, "r", encoding="utf-8") as file:
             content = file.read().strip()
     except FileNotFoundError:
         logger.warning("data.txt topilmadi: %s", DATA_FILE)
@@ -133,22 +254,45 @@ async def handler(event):
 
     if grouped_id:
         album_buffer[grouped_id].append(event)
+        # FIX: ensure_future — handler bloklanmaydi, event loop to'silmaydi
+        # Avvalgi kodda `await asyncio.sleep(1.5)` handler ichida edi —
+        # bu katta kanallarda keyingi eventlarni kechiktirardi.
         if grouped_id not in album_timers:
             album_timers[grouped_id] = True
-            await asyncio.sleep(1.5)
-            await process_album(grouped_id)
-            del album_timers[grouped_id]
+            asyncio.ensure_future(handle_album_with_delay(grouped_id))
     else:
-        await process_single_message(event)
+        # Yakka xabarni ham ensure_future bilan — handler zudlik bilan qaytadi
+        asyncio.ensure_future(process_single_message(event))
 
+
+# ─────────────────────────────────────────────
+# Album: kechikish bilan qayta ishlash
+# ─────────────────────────────────────────────
+async def handle_album_with_delay(grouped_id):
+    """
+    FIX: handler dan ajratildi. ensure_future orqali chaqiriladi.
+    Endi handler bloklanmaydi — katta kanallarda ham tez ishlaydi.
+    """
+    await asyncio.sleep(1.5)
+    await process_album(grouped_id)
+    album_timers.pop(grouped_id, None)
+
+
+# ─────────────────────────────────────────────
 # Albomli postni qayta ishlash
+# ─────────────────────────────────────────────
 async def process_album(grouped_id):
-    events = album_buffer.pop(grouped_id, [])
-    if not events:
+    evts = album_buffer.pop(grouped_id, [])
+    if not evts:
         return
 
-    main_event = events[0]
-    username = main_event.chat.username
+    main_event = evts[0]
+    username = getattr(getattr(main_event, "chat", None), "username", None)
+
+    if username is None:
+        logger.warning("process_album: chat.username topilmadi, chat_id=%s", main_event.chat_id)
+        return
+
     try:
         num = ALL_ID.index(username)
     except ValueError:
@@ -160,9 +304,17 @@ async def process_album(grouped_id):
     else:
         await edit_caption_message(main_event, num)
 
+
+# ─────────────────────────────────────────────
 # Yakka xabarni qayta ishlash
+# ─────────────────────────────────────────────
 async def process_single_message(event):
-    username = event.chat.username
+    username = getattr(getattr(event, "chat", None), "username", None)
+
+    if username is None:
+        logger.warning("process_single_message: chat.username topilmadi, chat_id=%s", event.chat_id)
+        return
+
     try:
         num = ALL_ID.index(username)
     except ValueError:
@@ -175,19 +327,26 @@ async def process_single_message(event):
         await edit_caption_message(event, num)
 
 
-# 🆕 Guruhlardan kelgan comment xabarlarni tutish va tekshirish
+# ─────────────────────────────────────────────
+# O'chirilgan comment xabarlarni tutish
+# ─────────────────────────────────────────────
 @client.on(events.MessageDeleted(chats=["NT_muhokama", "kepquay"]))
 async def deleted_comment_handler(event):
     await send_basa(event.chat_id, event.deleted_ids)
 
-# send_basa funksiyadi
+
+# ─────────────────────────────────────────────
+# send_basa — DB ga o'chirilgan xabarlarni yozish
+# ─────────────────────────────────────────────
 async def send_basa(group_id: int, msg_ids: list[int]):
     if conn is None or cur is None:
-        logger.error("DB ulanmagan: send_basa bajarilmadi. group_id=%s, msg_ids=%s", group_id, msg_ids)
+        logger.error(
+            "DB ulanmagan: send_basa bajarilmadi. group_id=%s, msg_ids=%s",
+            group_id, msg_ids
+        )
         return
 
     try:
-        # 1. Hammasini olish
         cur.execute("""
             SELECT user_id, message_id, length FROM comment_messages
             WHERE group_id = %s AND message_id = ANY(%s)
@@ -203,13 +362,11 @@ async def send_basa(group_id: int, msg_ids: list[int]):
             user_stats[user_id][0] += 1
             user_stats[user_id][1] += length
 
-        # 2. comment_messages dan o‘chirish
         cur.execute("""
             DELETE FROM comment_messages
             WHERE group_id = %s AND message_id = ANY(%s)
         """, (group_id, msg_ids))
 
-        # 3. user_comments yangilash
         for user_id, (count, total_length) in user_stats.items():
             cur.execute("""
                 UPDATE user_comments
@@ -219,14 +376,16 @@ async def send_basa(group_id: int, msg_ids: list[int]):
             """, (count, total_length, group_id, user_id))
 
         conn.commit()
-        logger.info("Batch o‘chirildi: %s ta xabar", len(results))
+        logger.info("Batch o'chirildi: %s ta xabar", len(results))
 
     except Exception as e:
         conn.rollback()
         logger.exception("send_basa_batch xatolik: %s", e)
 
 
+# ─────────────────────────────────────────────
 # Botni ishga tushuruvchi funksiya
+# ─────────────────────────────────────────────
 async def main():
     while True:
         try:
@@ -234,10 +393,25 @@ async def main():
             await client.start()
             me = await client.get_me()
             logger.info("Telethon authorized: id=%s username=%s", me.id, me.username)
+
+            # Barcha kanallar uchun entity oldindan keshlash
+            # Katta kanallarda birinchi post tezroq tahrirlanadi
+            logger.info("Kanallar entity keshlanmoqda...")
+            for channel_username in ALL_ID:
+                try:
+                    entity = await client.get_entity(channel_username)
+                    _entity_cache[entity.id] = entity
+                    logger.info("Keshlandi: @%s -> id=%s", channel_username, entity.id)
+                except Exception as e:
+                    logger.warning("Entity olinmadi (@%s): %s", channel_username, e)
+
+            logger.info("Entity keshlash tugadi. Bot ishlamoqda...")
             await client.run_until_disconnected()
+
         except Exception as e:
-            log_error(f"Bot o'chdi. Xato: {str(e)}. 5 soniyadan keyin qayta ishga tushiriladi.")
+            log_error(f"Bot o'chdi. Xato: {type(e).__name__}: {str(e)}. 5 soniyadan keyin qayta ishga tushiriladi.")
             await asyncio.sleep(5)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
