@@ -10,8 +10,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-import psycopg2
-
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
@@ -57,27 +55,6 @@ ALL_ID = _to_str_list(
     ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "ai_lingoBot", "nodavlattalim_uz"]
 )
 
-
-# DB sozlamalari
-DB_NAME = os.getenv("DB_NAME", "guruh")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "parol")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-
-conn = None
-cur = None
-try:
-    conn = psycopg2.connect(
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-        host=DB_HOST,
-        port=DB_PORT,
-    )
-    cur = conn.cursor()
-except Exception as e:
-    logger.exception("PostgreSQL ulanishida xatolik: %s", e)
 
 # Kanalga qo'shilgan matnlar
 ALL_TEXT = [
