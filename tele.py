@@ -1,13 +1,11 @@
 import asyncio
 import logging
-from collections import defaultdict
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from telethon import TelegramClient, events
+from telethon import TelegramClient
 from telethon.errors import ChatWriteForbiddenError, FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.account import UpdateStatusRequest
-from telethon import utils as telethon_utils
 
 from config import (
     ALL_ID,
@@ -27,6 +25,8 @@ logger = logging.getLogger("posteditor.tele")
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR / "data.txt"
+POLL_INTERVAL_SECONDS = 10
+FETCH_LIMIT_PER_CHANNEL = 15
 
 client = TelegramClient(
     SESSION_NAME,
@@ -37,34 +37,7 @@ client = TelegramClient(
     timeout=30,
 )
 
-_entity_by_chat_id: dict[int, object] = {}
-_channel_index_by_chat_id: dict[int, int] = {}
-_channel_index_by_username: dict[str, int] = {}
-
-album_buffer: dict[int, list[tuple[events.NewMessage.Event, int]]] = defaultdict(list)
-album_tasks: dict[int, asyncio.Task] = {}
-
-
-for index, channel in enumerate(ALL_ID):
-    username = channel.strip().lstrip("@").lower()
-    if username:
-        _channel_index_by_username[username] = index
-
-
-def _register_channel_entity(index: int, entity) -> None:
-    raw_id = getattr(entity, "id", None)
-    if raw_id is not None:
-        _channel_index_by_chat_id[int(raw_id)] = index
-
-    try:
-        marked_chat_id = int(telethon_utils.get_peer_id(entity))
-        _channel_index_by_chat_id[marked_chat_id] = index
-    except Exception:
-        pass
-
-    username = getattr(entity, "username", None)
-    if username:
-        _channel_index_by_username[username.strip().lstrip("@").lower()] = index
+channels: list[dict[str, Any]] = []
 
 
 def _read_state() -> str:
@@ -86,200 +59,150 @@ def _existing_entities(message) -> list:
     return []
 
 
-async def _edit_message_with_retry(event: events.NewMessage.Event, channel_index: int, retry: int = 0) -> None:
-    message = event.message
+async def _edit_message_with_retry(entity, message, channel_index: int, retry: int = 0) -> bool:
     original_text = message.message or ""
     suffix = ALL_TEXT[channel_index]
 
     if suffix.strip() in original_text:
-        log_info(f"Allaqachon qo'shilgan: message_id={message.id}")
-        return
+        log_info(f"Allaqachon qo'shilgan: chat_id={getattr(entity, 'id', None)}, message_id={message.id}")
+        return True
+
+    if _is_forwarded(message):
+        logger.info("Skip forwarded post: chat_id=%s, message_id=%s", getattr(entity, "id", None), message.id)
+        return True
 
     new_text = f"{original_text}\n\n{suffix}" if original_text else suffix
-    entities = _existing_entities(message) + entities_right(original_text, channel_index)
+    formatting_entities = _existing_entities(message) + entities_right(original_text, channel_index)
 
     try:
         await client.edit_message(
-            entity=event.chat_id,
+            entity=entity,
             message=message.id,
             text=new_text,
             link_preview=False,
-            formatting_entities=entities,
+            formatting_entities=formatting_entities,
         )
-        log_info(f"Post tahrirlandi: chat_id={event.chat_id}, message_id={message.id}")
+        log_info(f"Post tahrirlandi: chat_id={getattr(entity, 'id', None)}, message_id={message.id}")
+        return True
 
     except MessageNotModifiedError:
-        log_info(f"MessageNotModified: message_id={message.id}")
+        log_info(f"MessageNotModified: chat_id={getattr(entity, 'id', None)}, message_id={message.id}")
+        return True
 
     except ChatWriteForbiddenError:
-        log_error(f"Ruxsat yo'q (ChatWriteForbidden): chat_id={event.chat_id}")
+        log_error(f"Ruxsat yo'q (ChatWriteForbidden): chat_id={getattr(entity, 'id', None)}")
+        return True
 
     except FloodWaitError as error:
         wait_seconds = error.seconds + 2
         logger.warning(
-            "FloodWait: %s soniya kutamiz (message_id=%s, retry=%s)",
+            "FloodWait: %s soniya kutamiz (chat_id=%s, message_id=%s, retry=%s)",
             wait_seconds,
+            getattr(entity, "id", None),
             message.id,
             retry,
         )
         if retry >= 3:
-            log_error(f"FloodWait limit: message_id={message.id}")
-            return
+            log_error(f"FloodWait limit: chat_id={getattr(entity, 'id', None)}, message_id={message.id}")
+            return False
+
         await asyncio.sleep(wait_seconds)
-        await _edit_message_with_retry(event, channel_index, retry=retry + 1)
+        return await _edit_message_with_retry(entity, message, channel_index, retry=retry + 1)
 
     except Exception as error:
-        logger.exception("Post tahrirlashda xatolik: %s", error)
-
-
-async def _resolve_channel_index(event: events.NewMessage.Event) -> Optional[int]:
-    chat_id = event.chat_id
-    if chat_id in _channel_index_by_chat_id:
-        return _channel_index_by_chat_id[chat_id]
-
-    chat = getattr(event, "chat", None)
-    username = getattr(chat, "username", None)
-    if username:
-        normalized = username.strip().lstrip("@").lower()
-        if normalized in _channel_index_by_username:
-            idx = _channel_index_by_username[normalized]
-            _channel_index_by_chat_id[chat_id] = idx
-            return idx
-
-    try:
-        entity = await event.get_chat()
-        event_username = getattr(entity, "username", None)
-        if event_username:
-            normalized_event_username = event_username.strip().lstrip("@").lower()
-            if normalized_event_username in _channel_index_by_username:
-                idx = _channel_index_by_username[normalized_event_username]
-                _register_channel_entity(idx, entity)
-                if chat_id is not None:
-                    _channel_index_by_chat_id[chat_id] = idx
-                logger.info(
-                    "Channel index fallback orqali topildi: chat_id=%s, username=%s, index=%s",
-                    chat_id,
-                    event_username,
-                    idx,
-                )
-                return idx
-    except Exception as error:
-        logger.warning("event.get_chat fallback xato: chat_id=%s, xato=%s", chat_id, error)
-
-    logger.info(
-        "Channel index topilmadi: chat_id=%s, username=%s",
-        chat_id,
-        username,
-    )
-
-    return None
-
-
-def _is_channel_post(event: events.NewMessage.Event) -> bool:
-    return bool(event.is_channel and not event.is_group)
-
-
-async def _process_single(event: events.NewMessage.Event, channel_index: int) -> None:
-    if _is_forwarded(event.message):
-        logger.info("Skip forwarded single post: chat_id=%s, message_id=%s", event.chat_id, event.message.id)
-        return
-    await _edit_message_with_retry(event, channel_index)
-
-
-async def _process_album(grouped_id: int) -> None:
-    await asyncio.sleep(1.5)
-    entries = album_buffer.pop(grouped_id, [])
-    album_tasks.pop(grouped_id, None)
-
-    if not entries:
-        return
-
-    first_event, channel_index = entries[0]
-    if _is_forwarded(first_event.message):
-        logger.info(
-            "Skip forwarded album: chat_id=%s, grouped_id=%s, message_id=%s",
-            first_event.chat_id,
-            grouped_id,
-            first_event.message.id,
+        logger.exception(
+            "Post tahrirlashda xatolik: chat_id=%s, message_id=%s, xato=%s",
+            getattr(entity, "id", None),
+            message.id,
+            error,
         )
-        return
-
-    target_event = first_event
-    for event, _ in entries:
-        if (event.message.message or "").strip():
-            target_event = event
-            break
-
-    await _edit_message_with_retry(target_event, channel_index)
+        return False
 
 
-@client.on(events.NewMessage())
-async def on_new_message(event: events.NewMessage.Event) -> None:
-    logger.info(
-        "Event keldi: chat_id=%s, username=%s, message_id=%s, is_channel=%s, is_group=%s, grouped_id=%s",
-        event.chat_id,
-        getattr(getattr(event, "chat", None), "username", None),
-        event.message.id,
-        event.is_channel,
-        event.is_group,
-        event.message.grouped_id,
-    )
+def _pick_album_targets(messages: list[Any]) -> list[Any]:
+    grouped: dict[int, list[Any]] = {}
+    singles: list[Any] = []
 
-    state = _read_state()
-    if state != "/start":
-        logger.info("Skip state: data.txt='%s' (keraklisi: /start)", state)
-        return
+    for msg in messages:
+        grouped_id = getattr(msg, "grouped_id", None)
+        if grouped_id:
+            grouped.setdefault(grouped_id, []).append(msg)
+        else:
+            singles.append(msg)
 
-    if not _is_channel_post(event):
-        logger.info("Skip channel emas: chat_id=%s, message_id=%s", event.chat_id, event.message.id)
-        return
+    targets = list(singles)
 
-    channel_index = await _resolve_channel_index(event)
-    if channel_index is None:
-        logger.info("Skip kanal ro'yxatda yo'q: chat_id=%s, message_id=%s", event.chat_id, event.message.id)
-        return
+    for _, group_messages in grouped.items():
+        target = None
+        for msg in group_messages:
+            if (msg.message or "").strip():
+                target = msg
+                break
+        if target is None:
+            target = sorted(group_messages, key=lambda m: m.id)[0]
+        targets.append(target)
 
-    logger.info(
-        "Event qabul qilindi: chat_id=%s, message_id=%s, channel_index=%s",
-        event.chat_id,
-        event.message.id,
-        channel_index,
-    )
-
-    grouped_id = event.message.grouped_id
-    if grouped_id:
-        album_buffer[grouped_id].append((event, channel_index))
-        if grouped_id not in album_tasks:
-            album_tasks[grouped_id] = asyncio.create_task(_process_album(grouped_id))
-        return
-
-    asyncio.create_task(_process_single(event, channel_index))
+    return sorted(targets, key=lambda m: m.id)
 
 
-async def _warmup_channel_cache() -> None:
-    logger.info("Monitoring kanallar: %s", ", ".join(ALL_ID))
-    for index, channel in enumerate(ALL_ID):
-        try:
-            entity = await client.get_entity(channel)
-            _entity_by_chat_id[entity.id] = entity
-            _register_channel_entity(index, entity)
+async def _poll_single_channel(channel_state: dict[str, Any]) -> None:
+    entity = channel_state["entity"]
+    index = channel_state["index"]
+    title = channel_state["title"]
+    last_seen_id = channel_state["last_seen_id"]
 
-            logger.info(
-                "Kanal keshlandi: source=%s, raw_id=%s, marked_id=%s, username=%s",
-                channel,
-                getattr(entity, "id", None),
-                _safe_marked_id(entity),
-                getattr(entity, "username", None),
-            )
-        except Exception as error:
-            logger.warning("Kanalni resolve qilib bo'lmadi (%s): %s", channel, error)
-
-
-def _safe_marked_id(entity) -> Optional[int]:
     try:
-        return int(telethon_utils.get_peer_id(entity))
-    except Exception:
-        return None
+        recent_messages = await client.get_messages(entity, limit=FETCH_LIMIT_PER_CHANNEL)
+    except FloodWaitError as error:
+        wait_seconds = error.seconds + 2
+        logger.warning("FloodWait polling: channel=%s, %s soniya kutamiz", title, wait_seconds)
+        await asyncio.sleep(wait_seconds)
+        return
+    except Exception as error:
+        logger.warning("Kanalni o'qishda xatolik: channel=%s, xato=%s", title, error)
+        return
+
+    if not recent_messages:
+        return
+
+    ordered = sorted(recent_messages, key=lambda msg: msg.id)
+    newest_id = ordered[-1].id
+
+    if newest_id <= last_seen_id:
+        return
+
+    new_messages = [msg for msg in ordered if msg.id > last_seen_id]
+    targets = _pick_album_targets(new_messages)
+
+    logger.info(
+        "Yangi postlar topildi: channel=%s, count=%s, from_id=%s, to_id=%s",
+        title,
+        len(new_messages),
+        new_messages[0].id,
+        new_messages[-1].id,
+    )
+
+    for message in targets:
+        if not ((message.message or "").strip() or message.media):
+            logger.info("Skip service/empty message: channel=%s, message_id=%s", title, message.id)
+            continue
+        await _edit_message_with_retry(entity, message, index)
+
+    channel_state["last_seen_id"] = newest_id
+
+
+async def _poll_loop() -> None:
+    while True:
+        state = _read_state()
+        if state != "/start":
+            logger.info("Polling pauza: data.txt='%s' (keraklisi: /start)", state)
+            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            continue
+
+        for channel_state in channels:
+            await _poll_single_channel(channel_state)
+
+        await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
 async def _keep_online_status() -> None:
@@ -292,19 +215,65 @@ async def _keep_online_status() -> None:
         await asyncio.sleep(240)
 
 
+async def _prepare_channels() -> None:
+    channels.clear()
+
+    if len(ALL_ID) != len(ALL_TEXT):
+        logger.warning(
+            "ALL_ID va ALL_TEXT soni teng emas: channels=%s, texts=%s. Minimum uzunlik ishlatiladi.",
+            len(ALL_ID),
+            len(ALL_TEXT),
+        )
+
+    usable_count = min(len(ALL_ID), len(ALL_TEXT))
+    logger.info("Monitoring kanallar soni: %s", usable_count)
+
+    for index in range(usable_count):
+        channel_ref = ALL_ID[index]
+        try:
+            entity = await client.get_entity(channel_ref)
+            latest = await client.get_messages(entity, limit=1)
+            last_seen_id = latest[0].id if latest else 0
+
+            title = getattr(entity, "title", None) or getattr(entity, "username", None) or str(channel_ref)
+            channels.append(
+                {
+                    "index": index,
+                    "entity": entity,
+                    "title": title,
+                    "last_seen_id": last_seen_id,
+                }
+            )
+            logger.info(
+                "Kanal tayyor: index=%s, channel=%s, chat_id=%s, initial_last_seen=%s",
+                index,
+                title,
+                getattr(entity, "id", None),
+                last_seen_id,
+            )
+        except Exception as error:
+            logger.warning("Kanalni resolve qilib bo'lmadi (%s): %s", channel_ref, error)
+
+
 async def main() -> None:
     while True:
         keepalive_task: Optional[asyncio.Task] = None
+        polling_task: Optional[asyncio.Task] = None
+
         try:
             log_info(f"Userbot ishga tushdi. session={SESSION_NAME}")
             await client.start()
+
             me = await client.get_me()
             logger.info("Authorized: id=%s username=%s", me.id, me.username)
+
             await client(UpdateStatusRequest(offline=False))
             logger.info("Hisob online holatga o'tkazildi")
 
-            await _warmup_channel_cache()
+            await _prepare_channels()
             keepalive_task = asyncio.create_task(_keep_online_status())
+            polling_task = asyncio.create_task(_poll_loop())
+
             await client.run_until_disconnected()
 
         except Exception as error:
@@ -313,6 +282,8 @@ async def main() -> None:
         finally:
             if keepalive_task and not keepalive_task.done():
                 keepalive_task.cancel()
+            if polling_task and not polling_task.done():
+                polling_task.cancel()
 
 
 if __name__ == "__main__":
