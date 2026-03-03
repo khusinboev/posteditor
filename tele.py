@@ -6,6 +6,7 @@ from typing import Optional
 
 from telethon import TelegramClient, events
 from telethon.errors import ChatWriteForbiddenError, FloodWaitError, MessageNotModifiedError
+from telethon.tl.functions.account import UpdateStatusRequest
 
 from config import (
     ALL_ID,
@@ -235,20 +236,37 @@ async def _warmup_channel_cache() -> None:
             logger.warning("Kanalni resolve qilib bo'lmadi (%s): %s", channel, error)
 
 
+async def _keep_online_status() -> None:
+    while True:
+        try:
+            await client(UpdateStatusRequest(offline=False))
+            logger.info("Online keepalive yuborildi")
+        except Exception as error:
+            logger.warning("Online keepalive xatolik: %s", error)
+        await asyncio.sleep(240)
+
+
 async def main() -> None:
     while True:
+        keepalive_task: Optional[asyncio.Task] = None
         try:
             log_info(f"Userbot ishga tushdi. session={SESSION_NAME}")
             await client.start()
             me = await client.get_me()
             logger.info("Authorized: id=%s username=%s", me.id, me.username)
+            await client(UpdateStatusRequest(offline=False))
+            logger.info("Hisob online holatga o'tkazildi")
 
             await _warmup_channel_cache()
+            keepalive_task = asyncio.create_task(_keep_online_status())
             await client.run_until_disconnected()
 
         except Exception as error:
             log_error(f"Userbot xatolik bilan to'xtadi: {type(error).__name__}: {error}")
             await asyncio.sleep(5)
+        finally:
+            if keepalive_task and not keepalive_task.done():
+                keepalive_task.cancel()
 
 
 if __name__ == "__main__":
