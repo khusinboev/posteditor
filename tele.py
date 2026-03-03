@@ -7,6 +7,7 @@ from typing import Optional
 from telethon import TelegramClient, events
 from telethon.errors import ChatWriteForbiddenError, FloodWaitError, MessageNotModifiedError
 from telethon.tl.functions.account import UpdateStatusRequest
+from telethon import utils as telethon_utils
 
 from config import (
     ALL_ID,
@@ -48,6 +49,22 @@ for index, channel in enumerate(ALL_ID):
     username = channel.strip().lstrip("@").lower()
     if username:
         _channel_index_by_username[username] = index
+
+
+def _register_channel_entity(index: int, entity) -> None:
+    raw_id = getattr(entity, "id", None)
+    if raw_id is not None:
+        _channel_index_by_chat_id[int(raw_id)] = index
+
+    try:
+        marked_chat_id = int(telethon_utils.get_peer_id(entity))
+        _channel_index_by_chat_id[marked_chat_id] = index
+    except Exception:
+        pass
+
+    username = getattr(entity, "username", None)
+    if username:
+        _channel_index_by_username[username.strip().lstrip("@").lower()] = index
 
 
 def _read_state() -> str:
@@ -128,6 +145,26 @@ async def _resolve_channel_index(event: events.NewMessage.Event) -> Optional[int
             idx = _channel_index_by_username[normalized]
             _channel_index_by_chat_id[chat_id] = idx
             return idx
+
+    try:
+        entity = await event.get_chat()
+        event_username = getattr(entity, "username", None)
+        if event_username:
+            normalized_event_username = event_username.strip().lstrip("@").lower()
+            if normalized_event_username in _channel_index_by_username:
+                idx = _channel_index_by_username[normalized_event_username]
+                _register_channel_entity(idx, entity)
+                if chat_id is not None:
+                    _channel_index_by_chat_id[chat_id] = idx
+                logger.info(
+                    "Channel index fallback orqali topildi: chat_id=%s, username=%s, index=%s",
+                    chat_id,
+                    event_username,
+                    idx,
+                )
+                return idx
+    except Exception as error:
+        logger.warning("event.get_chat fallback xato: chat_id=%s, xato=%s", chat_id, error)
 
     logger.info(
         "Channel index topilmadi: chat_id=%s, username=%s",
@@ -225,15 +262,24 @@ async def _warmup_channel_cache() -> None:
         try:
             entity = await client.get_entity(channel)
             _entity_by_chat_id[entity.id] = entity
-            _channel_index_by_chat_id[entity.id] = index
+            _register_channel_entity(index, entity)
 
-            username = getattr(entity, "username", None)
-            if username:
-                _channel_index_by_username[username.strip().lstrip("@").lower()] = index
-
-            logger.info("Kanal keshlandi: %s -> %s", channel, entity.id)
+            logger.info(
+                "Kanal keshlandi: source=%s, raw_id=%s, marked_id=%s, username=%s",
+                channel,
+                getattr(entity, "id", None),
+                _safe_marked_id(entity),
+                getattr(entity, "username", None),
+            )
         except Exception as error:
             logger.warning("Kanalni resolve qilib bo'lmadi (%s): %s", channel, error)
+
+
+def _safe_marked_id(entity) -> Optional[int]:
+    try:
+        return int(telethon_utils.get_peer_id(entity))
+    except Exception:
+        return None
 
 
 async def _keep_online_status() -> None:
