@@ -49,12 +49,12 @@ for index, channel in enumerate(ALL_ID):
         _channel_index_by_username[username] = index
 
 
-def _state_started() -> bool:
+def _read_state() -> str:
     try:
-        return DATA_FILE.read_text(encoding="utf-8").strip() == "/start"
+        return DATA_FILE.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         logger.warning("State file topilmadi: %s", DATA_FILE)
-        return False
+        return ""
 
 
 def _is_forwarded(message) -> bool:
@@ -128,6 +128,12 @@ async def _resolve_channel_index(event: events.NewMessage.Event) -> Optional[int
             _channel_index_by_chat_id[chat_id] = idx
             return idx
 
+    logger.info(
+        "Channel index topilmadi: chat_id=%s, username=%s",
+        chat_id,
+        username,
+    )
+
     return None
 
 
@@ -137,6 +143,7 @@ def _is_channel_post(event: events.NewMessage.Event) -> bool:
 
 async def _process_single(event: events.NewMessage.Event, channel_index: int) -> None:
     if _is_forwarded(event.message):
+        logger.info("Skip forwarded single post: chat_id=%s, message_id=%s", event.chat_id, event.message.id)
         return
     await _edit_message_with_retry(event, channel_index)
 
@@ -151,6 +158,12 @@ async def _process_album(grouped_id: int) -> None:
 
     first_event, channel_index = entries[0]
     if _is_forwarded(first_event.message):
+        logger.info(
+            "Skip forwarded album: chat_id=%s, grouped_id=%s, message_id=%s",
+            first_event.chat_id,
+            grouped_id,
+            first_event.message.id,
+        )
         return
 
     target_event = first_event
@@ -164,15 +177,36 @@ async def _process_album(grouped_id: int) -> None:
 
 @client.on(events.NewMessage())
 async def on_new_message(event: events.NewMessage.Event) -> None:
-    if not _state_started():
+    logger.info(
+        "Event keldi: chat_id=%s, username=%s, message_id=%s, is_channel=%s, is_group=%s, grouped_id=%s",
+        event.chat_id,
+        getattr(getattr(event, "chat", None), "username", None),
+        event.message.id,
+        event.is_channel,
+        event.is_group,
+        event.message.grouped_id,
+    )
+
+    state = _read_state()
+    if state != "/start":
+        logger.info("Skip state: data.txt='%s' (keraklisi: /start)", state)
         return
 
     if not _is_channel_post(event):
+        logger.info("Skip channel emas: chat_id=%s, message_id=%s", event.chat_id, event.message.id)
         return
 
     channel_index = await _resolve_channel_index(event)
     if channel_index is None:
+        logger.info("Skip kanal ro'yxatda yo'q: chat_id=%s, message_id=%s", event.chat_id, event.message.id)
         return
+
+    logger.info(
+        "Event qabul qilindi: chat_id=%s, message_id=%s, channel_index=%s",
+        event.chat_id,
+        event.message.id,
+        channel_index,
+    )
 
     grouped_id = event.message.grouped_id
     if grouped_id:
@@ -185,6 +219,7 @@ async def on_new_message(event: events.NewMessage.Event) -> None:
 
 
 async def _warmup_channel_cache() -> None:
+    logger.info("Monitoring kanallar: %s", ", ".join(ALL_ID))
     for index, channel in enumerate(ALL_ID):
         try:
             entity = await client.get_entity(channel)
