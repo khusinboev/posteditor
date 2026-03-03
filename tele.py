@@ -5,7 +5,6 @@ from typing import Any, Optional
 
 from telethon import TelegramClient
 from telethon.errors import ChatWriteForbiddenError, FloodWaitError, MessageNotModifiedError
-from telethon.tl.functions.account import UpdateStatusRequest
 
 from config import (
     ALL_ID,
@@ -38,6 +37,14 @@ client = TelegramClient(
 )
 
 channels: list[dict[str, Any]] = []
+
+
+def _normalize_messages(result: Any) -> list[Any]:
+    if result is None:
+        return []
+    if isinstance(result, list):
+        return result
+    return [result]
 
 
 def _read_state() -> str:
@@ -152,7 +159,7 @@ async def _poll_single_channel(channel_state: dict[str, Any]) -> None:
     last_seen_id = channel_state["last_seen_id"]
 
     try:
-        recent_messages = await client.get_messages(entity, limit=FETCH_LIMIT_PER_CHANNEL)
+        recent_messages = _normalize_messages(await client.get_messages(entity, limit=FETCH_LIMIT_PER_CHANNEL))
     except FloodWaitError as error:
         wait_seconds = error.seconds + 2
         logger.warning("FloodWait polling: channel=%s, %s soniya kutamiz", title, wait_seconds)
@@ -205,16 +212,6 @@ async def _poll_loop() -> None:
         await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
 
-async def _keep_online_status() -> None:
-    while True:
-        try:
-            await client(UpdateStatusRequest(offline=False))
-            logger.info("Online keepalive yuborildi")
-        except Exception as error:
-            logger.warning("Online keepalive xatolik: %s", error)
-        await asyncio.sleep(240)
-
-
 async def _prepare_channels() -> None:
     channels.clear()
 
@@ -232,7 +229,7 @@ async def _prepare_channels() -> None:
         channel_ref = ALL_ID[index]
         try:
             entity = await client.get_entity(channel_ref)
-            latest = await client.get_messages(entity, limit=1)
+            latest = _normalize_messages(await client.get_messages(entity, limit=1))
             last_seen_id = latest[0].id if latest else 0
 
             title = getattr(entity, "title", None) or getattr(entity, "username", None) or str(channel_ref)
@@ -257,31 +254,28 @@ async def _prepare_channels() -> None:
 
 async def main() -> None:
     while True:
-        keepalive_task: Optional[asyncio.Task] = None
         polling_task: Optional[asyncio.Task] = None
 
         try:
             log_info(f"Userbot ishga tushdi. session={SESSION_NAME}")
-            await client.start()
+            client.start()
 
             me = await client.get_me()
-            logger.info("Authorized: id=%s username=%s", me.id, me.username)
-
-            await client(UpdateStatusRequest(offline=False))
-            logger.info("Hisob online holatga o'tkazildi")
+            logger.info(
+                "Authorized: id=%s username=%s",
+                getattr(me, "id", None),
+                getattr(me, "username", None),
+            )
 
             await _prepare_channels()
-            keepalive_task = asyncio.create_task(_keep_online_status())
             polling_task = asyncio.create_task(_poll_loop())
 
-            await client.run_until_disconnected()
+            client.run_until_disconnected()
 
         except Exception as error:
             log_error(f"Userbot xatolik bilan to'xtadi: {type(error).__name__}: {error}")
             await asyncio.sleep(5)
         finally:
-            if keepalive_task and not keepalive_task.done():
-                keepalive_task.cancel()
             if polling_task and not polling_task.done():
                 polling_task.cancel()
 
