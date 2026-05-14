@@ -191,11 +191,31 @@ async def _poll_single_channel(channel_state: dict[str, Any]) -> None:
     channel_state["last_seen_id"] = newest_id
 
 
+async def _update_last_seen_ids() -> None:
+    """Stop paytida last_seen_id ni yangilaydi, keyinchalik start bo'lganda eski postlar tahrirlanmasin."""
+    for channel_state in channels:
+        try:
+            recent = await client.get_messages(channel_state["entity"], limit=1)
+            if recent:
+                newest_id = recent[0].id
+                if newest_id > channel_state["last_seen_id"]:
+                    logger.info(
+                        "Stop paytida last_seen_id yangilandi: channel=%s, %s -> %s",
+                        channel_state["title"],
+                        channel_state["last_seen_id"],
+                        newest_id,
+                    )
+                    channel_state["last_seen_id"] = newest_id
+        except Exception as error:
+            logger.warning("last_seen_id yangilashda xatolik: channel=%s, xato=%s", channel_state["title"], error)
+
+
 async def _poll_loop() -> None:
     while True:
         state = _read_state()
         if state != "/start":
             logger.info("Polling pauza: data.txt='%s' (keraklisi: /start)", state)
+            await _update_last_seen_ids()
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
             continue
 
