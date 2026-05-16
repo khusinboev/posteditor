@@ -52,7 +52,7 @@ admin = _to_int_list(os.getenv("ADMIN_IDS", ""), [619839487, 1918760732])
 # Telegram kanal identifikatorlari
 ALL_ID = _to_str_list(
     os.getenv("ALL_ID", ""),
-    ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "ai_lingoBot", "nodavlattalim_uz", "Axmadjanovuz"]
+    ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "Axmadjanovuz", "nodavlattalim_uz", "ai_lingoBot"]
 )
 
 
