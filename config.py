@@ -62,7 +62,7 @@ ALL_TEXT = [
     "Safimizga qo'shiling👇\nhttps://t.me/+Xa6LRjERxwo4Njdi\nhttps://t.me/+Xa6LRjERxwo4Njdi",
     "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live",
     "✅️@Talim24uz",
-    "✅️@Talim24uz",
+    "👉 @Axmadjanovuz"
     "👉 nodavlattalim.uz – rasmiy kanali", 
     "👉 @Axmadjanovuz"
 ]
