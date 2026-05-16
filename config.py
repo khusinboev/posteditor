@@ -98,8 +98,9 @@ RAW_ENTITIES = {
     5: [  # Ta‘lim tizimiga oid yangiliklar:
         {"offset": 0, "length": 35, "type": "bold"},
     {"offset": 3, "length": 16, "type": "text_link", "url": "https://t.me/nodavlattalim_uz"},
-        {"offset": 37, "length": 11, "type": "mention"}
-    ]
+        {"offset": 37, "length": 11, "type": "mention"}    ],
+    6: [  # 👉 @Axmadjanovuz
+        {"offset": 3, "length": 14, "type": "mention"},    ]
 }
 
 
