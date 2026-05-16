@@ -62,9 +62,9 @@ ALL_TEXT = [
     "Safimizga qo'shiling👇\nhttps://t.me/+Xa6LRjERxwo4Njdi\nhttps://t.me/+Xa6LRjERxwo4Njdi",
     "Ta‘lim tizimiga oid yangiliklar:\n➡️ @Talim_Live",
     "✅️@Talim24uz",
-    "👉 @Axmadjanovuz"
+    "👉 @Axmadjanovuz",
     "👉 nodavlattalim.uz – rasmiy kanali", 
-    "👉 @Axmadjanovuz"
+    "👉 @Axmadjanovuz",
 ]
 
 # Har bir maxsus emoji uchun offset va id
