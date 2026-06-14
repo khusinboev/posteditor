@@ -10,6 +10,7 @@ from telethon.tl.functions.account import UpdateStatusRequest
 from config import (
     ALL_ID,
     ALL_TEXT,
+    CHANNEL_TEXTS,
     API_HASH,
     API_ID,
     SESSION_NAME,
@@ -54,25 +55,68 @@ def _is_forwarded(message) -> bool:
 
 def _existing_entities(message) -> list:
     entities = getattr(message, "entities", None)
-    if entities:
-        return list(entities)
-    return []
+    return list(entities) if entities else []
 
 
-async def _edit_message_with_retry(entity, message, channel_index: int, retry: int = 0) -> bool:
+def _build_full_suffix(original_text: str, text_indices: list[int]) -> tuple[str, list]:
+    """
+    Bir nechta ALL_TEXT indeksini birlashtiradi.
+    Qaytaradi: (combined_suffix_text, combined_entities)
+
+    original_text — xabarning hozirgi matni (edit oldidan).
+    text_indices  — qo'shilishi kerak bo'lgan ALL_TEXT indekslari (tartibda).
+
+    Offset hisoblash:
+        entities_right(accumulated, idx) chaqiriladi, bu yerda accumulated =
+        original_text + separator + oldingi suffix'lar.
+        Shu tarzda har bir entity new_text dagi to'g'ri utf16 offsetga ega bo'ladi.
+    """
+    combined_text = ""
+    combined_entities: list = []
+
+    for idx in text_indices:
+        suffix = ALL_TEXT[idx]
+        # Shu paytgacha to'plangan kontekst: original + oldingi suffix'lar
+        accumulated = f"{original_text}\n\n{combined_text}" if combined_text else original_text
+        new_entities = entities_right(accumulated, idx)
+        combined_entities.extend(new_entities)
+        combined_text = f"{combined_text}\n\n{suffix}" if combined_text else suffix
+
+    return combined_text, combined_entities
+
+
+async def _edit_message_with_retry(
+    entity,
+    message,
+    text_indices: list[int],
+    retry: int = 0,
+) -> bool:
     original_text = message.message or ""
-    suffix = ALL_TEXT[channel_index]
 
-    if suffix.strip() in original_text:
-        log_info(f"Allaqachon qo'shilgan: chat_id={getattr(entity, 'id', None)}, message_id={message.id}")
+    # FIX: Barcha suffix'larni birlashtirgan holda duplicate tekshiramiz.
+    # Birinchi indeksning matnini tekshirish yetarli (qo'shilgan bo'lsa, hammasi qo'shilgan).
+    first_suffix = ALL_TEXT[text_indices[0]]
+    if first_suffix in original_text:
+        log_info(
+            f"Allaqachon qo'shilgan: chat_id={getattr(entity, 'id', None)}, message_id={message.id}"
+        )
         return True
 
     if _is_forwarded(message):
-        logger.info("Skip forwarded post: chat_id=%s, message_id=%s", getattr(entity, "id", None), message.id)
+        logger.info(
+            "Skip forwarded post: chat_id=%s, message_id=%s",
+            getattr(entity, "id", None),
+            message.id,
+        )
         return True
 
-    new_text = f"{original_text}\n\n{suffix}" if original_text else suffix
-    formatting_entities = _existing_entities(message) + entities_right(original_text, channel_index)
+    # FIX: combined suffix va entity'larni birlashtirish (original_text offset uchun)
+    combined_suffix, suffix_entities = _build_full_suffix(original_text, text_indices)
+    new_text = f"{original_text}\n\n{combined_suffix}" if original_text else combined_suffix
+
+    # Existing entity'larning offset'lari o'zgarmaydi (ular original matn boshidan)
+    # Suffix entity'lari entities_right() tomonidan to'g'ri offsetlangan
+    formatting_entities = _existing_entities(message) + suffix_entities
 
     try:
         await client.edit_message(
@@ -82,15 +126,21 @@ async def _edit_message_with_retry(entity, message, channel_index: int, retry: i
             link_preview=False,
             formatting_entities=formatting_entities,
         )
-        log_info(f"Post tahrirlandi: chat_id={getattr(entity, 'id', None)}, message_id={message.id}")
+        log_info(
+            f"Post tahrirlandi: chat_id={getattr(entity, 'id', None)}, message_id={message.id}"
+        )
         return True
 
     except MessageNotModifiedError:
-        log_info(f"MessageNotModified: chat_id={getattr(entity, 'id', None)}, message_id={message.id}")
+        log_info(
+            f"MessageNotModified: chat_id={getattr(entity, 'id', None)}, message_id={message.id}"
+        )
         return True
 
     except ChatWriteForbiddenError:
-        log_error(f"Ruxsat yo'q (ChatWriteForbidden): chat_id={getattr(entity, 'id', None)}")
+        log_error(
+            f"Ruxsat yo'q (ChatWriteForbidden): chat_id={getattr(entity, 'id', None)}"
+        )
         return True
 
     except FloodWaitError as error:
@@ -103,11 +153,13 @@ async def _edit_message_with_retry(entity, message, channel_index: int, retry: i
             retry,
         )
         if retry >= 3:
-            log_error(f"FloodWait limit: chat_id={getattr(entity, 'id', None)}, message_id={message.id}")
+            log_error(
+                f"FloodWait limit: chat_id={getattr(entity, 'id', None)}, message_id={message.id}"
+            )
             return False
 
         await asyncio.sleep(wait_seconds)
-        return await _edit_message_with_retry(entity, message, channel_index, retry=retry + 1)
+        return await _edit_message_with_retry(entity, message, text_indices, retry=retry + 1)
 
     except Exception as error:
         logger.exception(
@@ -133,13 +185,10 @@ def _pick_album_targets(messages: list[Any]) -> list[Any]:
     targets = list(singles)
 
     for _, group_messages in grouped.items():
-        target = None
-        for msg in group_messages:
-            if (msg.message or "").strip():
-                target = msg
-                break
-        if target is None:
-            target = sorted(group_messages, key=lambda m: m.id)[0]
+        target = next(
+            (msg for msg in group_messages if (msg.message or "").strip()),
+            sorted(group_messages, key=lambda m: m.id)[0],
+        )
         targets.append(target)
 
     return sorted(targets, key=lambda m: m.id)
@@ -147,7 +196,7 @@ def _pick_album_targets(messages: list[Any]) -> list[Any]:
 
 async def _poll_single_channel(channel_state: dict[str, Any]) -> None:
     entity = channel_state["entity"]
-    index = channel_state["index"]
+    text_indices: list[int] = channel_state["text_indices"]
     title = channel_state["title"]
     last_seen_id = channel_state["last_seen_id"]
 
@@ -184,9 +233,11 @@ async def _poll_single_channel(channel_state: dict[str, Any]) -> None:
 
     for message in targets:
         if not ((message.message or "").strip() or message.media):
-            logger.info("Skip service/empty message: channel=%s, message_id=%s", title, message.id)
+            logger.info(
+                "Skip service/empty message: channel=%s, message_id=%s", title, message.id
+            )
             continue
-        await _edit_message_with_retry(entity, message, index)
+        await _edit_message_with_retry(entity, message, text_indices)
 
     channel_state["last_seen_id"] = newest_id
 
@@ -207,7 +258,11 @@ async def _update_last_seen_ids() -> None:
                     )
                     channel_state["last_seen_id"] = newest_id
         except Exception as error:
-            logger.warning("last_seen_id yangilashda xatolik: channel=%s, xato=%s", channel_state["title"], error)
+            logger.warning(
+                "last_seen_id yangilashda xatolik: channel=%s, xato=%s",
+                channel_state["title"],
+                error,
+            )
 
 
 async def _poll_loop() -> None:
@@ -236,43 +291,60 @@ async def _keep_online_status() -> None:
 
 
 async def _prepare_channels() -> None:
+    """
+    FIX: ALL_ID:ALL_TEXT 1:1 mapping o'rniga CHANNEL_TEXTS ishlatiladi.
+    Har bir kanal o'ziga mos text_indices ro'yxatini oladi.
+    CHANNEL_TEXTS da bo'lmagan kanal skip qilinadi (ogohlantirish bilan).
+    """
     channels.clear()
 
-    if len(ALL_ID) != len(ALL_TEXT):
-        logger.warning(
-            "ALL_ID va ALL_TEXT soni teng emas: channels=%s, texts=%s. Minimum uzunlik ishlatiladi.",
-            len(ALL_ID),
-            len(ALL_TEXT),
-        )
+    for channel_ref in ALL_ID:
+        text_indices = CHANNEL_TEXTS.get(channel_ref)
+        if text_indices is None:
+            logger.warning(
+                "CHANNEL_TEXTS da topilmadi, skip: channel=%s", channel_ref
+            )
+            continue
 
-    usable_count = min(len(ALL_ID), len(ALL_TEXT))
-    logger.info("Monitoring kanallar soni: %s", usable_count)
+        # Index'larni validatsiya qilish
+        invalid = [i for i in text_indices if i >= len(ALL_TEXT)]
+        if invalid:
+            logger.error(
+                "ALL_TEXT da mavjud emas: channel=%s, invalid_indices=%s. Skip.",
+                channel_ref,
+                invalid,
+            )
+            continue
 
-    for index in range(usable_count):
-        channel_ref = ALL_ID[index]
         try:
             entity = await client.get_entity(channel_ref)
             latest = await client.get_messages(entity, limit=1)
             last_seen_id = latest[0].id if latest else 0
 
-            title = getattr(entity, "title", None) or getattr(entity, "username", None) or str(channel_ref)
+            title = (
+                getattr(entity, "title", None)
+                or getattr(entity, "username", None)
+                or str(channel_ref)
+            )
             channels.append(
                 {
-                    "index": index,
                     "entity": entity,
                     "title": title,
+                    "text_indices": text_indices,
                     "last_seen_id": last_seen_id,
                 }
             )
             logger.info(
-                "Kanal tayyor: index=%s, channel=%s, chat_id=%s, initial_last_seen=%s",
-                index,
+                "Kanal tayyor: channel=%s, chat_id=%s, text_indices=%s, initial_last_seen=%s",
                 title,
                 getattr(entity, "id", None),
+                text_indices,
                 last_seen_id,
             )
         except Exception as error:
             logger.warning("Kanalni resolve qilib bo'lmadi (%s): %s", channel_ref, error)
+
+    logger.info("Monitoring kanallar soni: %s", len(channels))
 
 
 async def main() -> None:
