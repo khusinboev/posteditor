@@ -90,7 +90,7 @@ ALL_TEXT: list[str] = [
 # tele.py _build_full_suffix() ularni ketma-ket birlashtiradi.
 # ---------------------------------------------------------------------------
 CHANNEL_TEXTS: dict[str, list[int]] = {
-    "nodavlattalim":    [0, 1],
+    "nodavlattalim":    [0],
     "abitur24":         [7, 1],
     "Talim_Live":       [7, 2],
     "Talim24uz":        [7, 3],
