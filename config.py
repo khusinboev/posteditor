@@ -19,18 +19,13 @@ load_dotenv(BASE_DIR / ".env")
 def _to_int_list(raw_value: str, default: list[int]) -> list[int]:
     if not raw_value:
         return default
-    values = []
-    for item in raw_value.split(","):
-        item = item.strip()
-        if item:
-            values.append(int(item))
-    return values
+    return [int(v.strip()) for v in raw_value.split(",") if v.strip()]
 
 
 def _to_str_list(raw_value: str, default: list[str]) -> list[str]:
     if not raw_value:
         return default
-    return [item.strip() for item in raw_value.split(",") if item.strip()]
+    return [v.strip() for v in raw_value.split(",") if v.strip()]
 
 
 logger = logging.getLogger("posteditor")
@@ -52,10 +47,8 @@ API_HASH = os.getenv("API_HASH", "abcdef1234567890abcdef1234567890")
 SESSION_NAME = str((BASE_DIR / os.getenv("SESSION_NAME", "my_bot")).resolve())
 BOT_TOKEN = os.getenv("BOT_TOKEN", "BOT_TOKEN")
 
-# Adminlar
 admin = _to_int_list(os.getenv("ADMIN_IDS", ""), [619839487, 1918760732])
 
-# Telegram kanal identifikatorlari
 ALL_ID = _to_str_list(
     os.getenv("ALL_ID", ""),
     ["nodavlattalim", "abitur24", "Talim_Live", "Talim24uz", "Axmadjanovuz", "nodavlattalim_uz", "ai_lingoBot"],
@@ -63,32 +56,26 @@ ALL_ID = _to_str_list(
 
 
 # ---------------------------------------------------------------------------
-# ALL_TEXT — qo'shiladigan matnlar (indeks = kalit)
+# ALL_TEXT  (indeks = kalit, tele.py tomonidan "\n\n" separator bilan qo'shiladi)
 #
-# FIX: ALL_TEXT[7] boshidagi "\n\n" OLIB TASHLANDI.
-#   Sabab: tele.py da suffix qo'shilganda
-#     new_text = f"{original_text}\n\n{suffix}"
-#   deb yoziladi. Agar suffix ham "\n\n" bilan boshlansa → 4 ta \n bo'lar edi.
-#   entities_right() separator uchun +2 offset hisoblaydi — bu tele.py dagi
-#   "\n\n" separator bilan mos. Shuning uchun suffix o'zida "\n\n" bo'lmasligi kerak.
+# ALL_TEXT[7]: "\n\n" prefix YO'Q — tele.py "\n\n{suffix}" formatida qo'shadi.
 # ---------------------------------------------------------------------------
 ALL_TEXT: list[str] = [
-    # 0
+    # 0 — nodavlattalim
     "🇺🇿 @nodavlattalim — nodavlat oliy ta'lim muassasalari haqida rasmiy xabarlar!",
-    # 1  — "Safimizga qo'shiling"
+    # 1 — Safimizga qo'shiling
     "Safimizga qo'shiling👇\nhttps://t.me/+Xa6LRjERxwo4Njdi\nhttps://t.me/+Xa6LRjERxwo4Njdi",
-    # 2  — Talim_Live
+    # 2 — Talim_Live
     "Ta'lim tizimiga oid yangiliklar:\n➡️ @Talim_Live",
-    # 3  — Talim24uz
+    # 3 — Talim24uz
     "✅️@Talim24uz",
-    # 4  — (zaxira, index 3 bilan bir xil, saqlab qolindi)
+    # 4 — (zaxira)
     "✅️@Talim24uz",
-    # 5  — nodavlattalim_uz (text_link bilan)
+    # 5 — nodavlattalim_uz
     "👉 nodavlattalim.uz – rasmiy kanali",
-    # 6  — Axmadjanovuz
+    # 6 — Axmadjanovuz
     "👉 @Axmadjanovuz",
-    # 7  — abitur24 | Talim_Live | Talim24uz | ai_lingoBot — YANGI (premium emoji)
-    #   "\n\n" YO'Q — tele.py separator qo'shadi
+    # 7 — YANGI: abitur24 | Talim_Live | Talim24uz | ai_lingoBot
     "✔️ @mandatjavobbot orqali istalgan ta'lim yo'nalishlarining "
     "2025-2026-o'quv yilidagi o'tish ballari bilan tanishishingiz mumkin."
     "\n\n🖊 @BMB_testbot orqali maxsus diagnostik testlarni ishlab, "
@@ -97,99 +84,108 @@ ALL_TEXT: list[str] = [
 
 
 # ---------------------------------------------------------------------------
-# CHANNEL_TEXTS — har bir kanalga qaysi ALL_TEXT indeks'lari qo'shilishini belgilaydi.
+# CHANNEL_TEXTS — kanal → qo'shiladigan ALL_TEXT indekslari (tartibda)
 #
-# Muhim: indeks'lar QO'SHILISH TARTIBIDA berilgan.
-#   - tele.py har bir indeksni ketma-ket original xabarga append qiladi.
-#   - entities_right(original_text, idx) chaqirilganda original_text
-#     shu paytgacha yig'ilgan matn bo'ladi (offset to'g'ri hisoblangani uchun).
-#
-# Agar kanal ALL_ID da bo'lsa lekin bu dict da bo'lmasa → xabar tahrirlanmaydi.
+# Bir kanalga bir nechta suffix qo'shish mumkin.
+# tele.py _build_full_suffix() ularni ketma-ket birlashtiradi.
 # ---------------------------------------------------------------------------
 CHANNEL_TEXTS: dict[str, list[int]] = {
-    "nodavlattalim":    [0, 1],   # 🇺🇿 xabar + Safimizga
-    "abitur24":         [7, 1],   # YANGI premium + Safimizga
-    "Talim_Live":       [7, 2],   # YANGI premium + @Talim_Live
-    "Talim24uz":        [7, 3],   # YANGI premium + ✅️@Talim24uz
-    "Axmadjanovuz":     [6],      # 👉 @Axmadjanovuz
-    "nodavlattalim_uz": [5],      # nodavlattalim.uz link
-    "ai_lingoBot":      [7, 1],   # YANGI premium + Safimizga
+    "nodavlattalim":    [0, 1],
+    "abitur24":         [7, 1],
+    "Talim_Live":       [7, 2],
+    "Talim24uz":        [7, 3],
+    "Axmadjanovuz":     [6],
+    "nodavlattalim_uz": [5],
+    "ai_lingoBot":      [7, 1],
 }
 
 
 # ---------------------------------------------------------------------------
-# RAW_ENTITIES — entity'lar (offset'lar matn BOSHIDAN, 0-based UTF-16-LE unit)
+# RAW_ENTITIES — matn BOSHIDAN 0-based UTF-16-LE unit offset'lar.
 #
-# FIX: RAW_ENTITIES[7] offset'lari endi JSON bilan bir xil (0-based).
-#   Avval "\n\n" prefix uchun +2 qo'shilgan edi — endi prefix yo'q, shuning uchun
-#   entities_right() dagi base_offset (+2 separator) to'g'ri ishlaydi.
+# entities_right(original_text, num) chaqirilganda base_offset avtomatik
+# qo'shiladi: utf16(original_text) + 2  (tele.py "\n\n" separator = 2 unit).
+#
+# BARCHA offset va length'lar Python skript bilan tekshirildi ✓
 # ---------------------------------------------------------------------------
 RAW_ENTITIES: dict[int, list[dict]] = {
-    # 0 — 🇺🇿 @nodavlattalim
+
+    # 0 — "🇺🇿 @nodavlattalim — nodavlat oliy ta'lim..."
+    # 🇺🇿 = U+1F1FA + U+1F1FF (har biri surrogate pair) = 4 UTF-16 unit
+    # " " = 1 unit → "@nodavlattalim" offset=5
+    # "— nodavlat..." offset=20 (5+14+1=" ")
     0: [
         {"offset": 0,  "length": 4,  "type": "custom_emoji", "custom_emoji_id": "5325506731164312731"},
         {"offset": 5,  "length": 14, "type": "mention"},
         {"offset": 5,  "length": 14, "type": "bold"},
-        {"offset": 19, "length": 60, "type": "bold"},
+        {"offset": 20, "length": 59, "type": "bold"},   # FIX: 19→20, 60→59
     ],
-    # 1 — Safimizga qo'shiling👇
+
+    # 1 — "Safimizga qo'shiling👇\n..."
+    # bold covers "Safimizga qo'shiling👇" = 20 chars + 👇(2 units) = 22 ✓
     1: [
         {"offset": 0, "length": 22, "type": "bold"},
     ],
-    # 2 — Ta'lim tizimiga oid yangiliklar: ➡️ @Talim_Live
+
+    # 2 — "Ta'lim tizimiga oid yangiliklar:\n➡️ @Talim_Live"
+    # "Ta'lim tizimiga oid yangiliklar:" = 32 UTF-16 units  FIX: 33→32
+    # ➡️ = U+27A1(1) + U+FE0F(1) = 2 units → at offset 33
+    # " " at 35 → "@Talim_Live" at 36                       FIX: 37→36
     2: [
-        {"offset": 0,  "length": 33, "type": "bold"},
-        {"offset": 37, "length": 11, "type": "mention"},
+        {"offset": 0,  "length": 32, "type": "bold"},    # FIX: 33→32
+        {"offset": 36, "length": 11, "type": "mention"}, # FIX: 37→36
     ],
-    # 3 — ✅️@Talim24uz
+
+    # 3 — "✅️@Talim24uz"
+    # ✅ = U+2705(1) + U+FE0F(1) = 2 units → "@Talim24uz" at 2
     3: [
         {"offset": 0, "length": 2,  "type": "custom_emoji", "custom_emoji_id": "5350384878254826109"},
         {"offset": 2, "length": 10, "type": "mention"},
     ],
-    # 4 — ✅️@Talim24uz (zaxira)
+
+    # 4 — (zaxira, 3 bilan bir xil)
     4: [
         {"offset": 0, "length": 2,  "type": "custom_emoji", "custom_emoji_id": "5350384878254826109"},
         {"offset": 2, "length": 10, "type": "mention"},
     ],
-    # 5 — 👉 nodavlattalim.uz (text_link)
+
+    # 5 — "👉 nodavlattalim.uz – rasmiy kanali"
+    # 👉 = U+1F449 (surrogate) = 2 units, " " = 1 → "nodavlattalim.uz" at 3
+    # "nodavlattalim.uz" = 16 UTF-16 units
+    # Total text = 35 UTF-16 units → bold covers all (length=35)
+    # FIX: mention entity OLIB TASHLANDI (text da @mention yo'q)
     5: [
-        {"offset": 0,  "length": 35, "type": "bold"},
-        {"offset": 3,  "length": 16, "type": "text_link", "url": "https://t.me/nodavlattalim_uz"},
-        {"offset": 37, "length": 11, "type": "mention"},
+        {"offset": 0, "length": 35, "type": "bold"},
+        {"offset": 3, "length": 16, "type": "text_link", "url": "https://t.me/nodavlattalim_uz"},
     ],
-    # 6 — 👉 @Axmadjanovuz
+
+    # 6 — "👉 @Axmadjanovuz"
+    # 👉 = 2 units, " " = 1 → "@Axmadjanovuz" at 3, length=13  FIX: 14→13
     6: [
-        {"offset": 3, "length": 14, "type": "mention"},
+        {"offset": 3, "length": 13, "type": "mention"},  # FIX: 14→13
     ],
-    # 7 — ✔️ @mandatjavobbot … 🖊 @BMB_testbot …
-    #   Offset'lar JSON bilan aynan bir xil (0-based, "\n\n" prefix yo'q).
-    #   Tekshirilgan: barcha offset'lar Python skript bilan verified ✓
+
+    # 7 — "✔️ @mandatjavobbot ... 🖊 @BMB_testbot ..."
+    # Barcha offset'lar JSON bilan aynan mos (tekshirildi ✓)
+    # FIX: italic "diagnostik..." length 84→85
     7: [
-        # ✔️  (U+2714 + U+FE0F, 1+1 UTF-16 unit → length=2)
+        # ✔️ = U+2714(1) + U+FE0F(1) = 2 units
         {"offset": 0,   "length": 2,  "type": "custom_emoji", "custom_emoji_id": "5321210956414459578"},
-        # @mandatjavobbot
         {"offset": 3,   "length": 15, "type": "mention"},
         {"offset": 3,   "length": 15, "type": "bold"},
         {"offset": 3,   "length": 15, "type": "italic"},
-        # " orqali istalgan ta'lim yo'nalishlarining "
         {"offset": 18,  "length": 42, "type": "italic"},
-        # "2025-2026-o'quv yilidagi o'tish ballari"
         {"offset": 60,  "length": 39, "type": "bold"},
         {"offset": 60,  "length": 39, "type": "italic"},
-        # "bilan tanishishingiz mumkin."
         {"offset": 100, "length": 28, "type": "italic"},
-        # 🖊  (U+1F58A, surrogate pair → length=2)
+        # 🖊 = U+1F58A (surrogate) = 2 units
         {"offset": 130, "length": 2,  "type": "custom_emoji", "custom_emoji_id": "5321223519193800525"},
-        # " " space after 🖊
-        {"offset": 132, "length": 1,  "type": "italic"},
-        # @BMB_testbot
+        {"offset": 132, "length": 1,  "type": "italic"},   # space after 🖊
         {"offset": 133, "length": 12, "type": "mention"},
         {"offset": 133, "length": 12, "type": "bold"},
         {"offset": 133, "length": 12, "type": "italic"},
-        # " orqali maxsus "
         {"offset": 145, "length": 15, "type": "italic"},
-        # "diagnostik testlarni ishlab, o'z bilimingizni bepulga sinovdan o'tkazishingiz mumkin."
-        {"offset": 160, "length": 84, "type": "italic"},
+        {"offset": 160, "length": 85, "type": "italic"},   # FIX: 84→85
         {"offset": 160, "length": 77, "type": "bold"},
     ],
 }
@@ -200,26 +196,23 @@ RAW_ENTITIES: dict[int, list[dict]] = {
 # ---------------------------------------------------------------------------
 def entities_right(original_text: str, num: int) -> list:
     """
-    original_text — shu paytgacha yig'ilgan xabar matni (qo'shimcha qo'shilishidan oldin).
+    original_text — shu paytgacha yig'ilgan xabar matni.
     num           — ALL_TEXT / RAW_ENTITIES indeksi.
 
-    Qaytaradi: Telethon MessageEntity ob'ektlari ro'yxati.
-
-    Offset hisoblash:
-        original_text bo'sh bo'lsa  → offset = entry_offset
-        bo'sh bo'lmasa              → offset = utf16(original_text) + 2 + entry_offset
-        (+2 = tele.py da qo'shiladigan '\\n\\n' separator = 2 UTF-16 unit)
+    base_offset hisoblash:
+        original_text bo'sh  → 0
+        bo'sh emas           → utf16(original_text) + 2
+        (+2 = tele.py qo'shadigan "\\n\\n" = 2 UTF-16 unit)
     """
     if num not in RAW_ENTITIES:
         return []
 
-    final_entities: list = []
     base_offset = (
-        0
-        if not original_text
+        0 if not original_text
         else len(original_text.encode("utf-16-le")) // 2 + 2
     )
 
+    final_entities: list = []
     for ent in RAW_ENTITIES[num]:
         t = ent["type"]
         offset = base_offset + ent["offset"]
