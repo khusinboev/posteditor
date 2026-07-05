@@ -193,8 +193,9 @@ RAW_ENTITIES: dict[int, list[dict]] = {
     
     # 8 — "🤳 @Ruxsatnoma2026_bot ..."
     8: [
-        {"offset": 0,  "length": 94,  "type": "custom_emoji", "custom_emoji_id": "5319109506225938985"},
+        {"offset": 0,  "length": 2,  "type": "custom_emoji", "custom_emoji_id": "5319109506225938985"},
         {"offset": 44,  "length": 28, "type": "bold"},
+        {"offset": 0,  "length": 94, "type": "italic"},
     ],
 }
 
