@@ -80,6 +80,8 @@ ALL_TEXT: list[str] = [
     "2025-2026-o'quv yilidagi o'tish ballari bilan tanishishingiz mumkin."
     "\n\n🖊 @BMB_testbot orqali maxsus diagnostik testlarni ishlab, "
     "o'z bilimingizni bepulga sinovdan o'tkazishingiz mumkin.",
+    # 8 - botlar
+    "🤳 @Ruxsatnoma2026_bot telegram-boti orqali Abituriyent ruxsatnomanisini yuklab olishi mumkin."
 ]
 
 
@@ -187,6 +189,12 @@ RAW_ENTITIES: dict[int, list[dict]] = {
         {"offset": 145, "length": 15, "type": "italic"},
         {"offset": 160, "length": 85, "type": "italic"},   # FIX: 84→85
         {"offset": 160, "length": 77, "type": "bold"},
+    ],
+    
+    # 8 — "🤳 @Ruxsatnoma2026_bot ..."
+    8: [
+        {"offset": 0,  "length": 2,  "type": "custom_emoji", "custom_emoji_id": "5319109506225938985"},
+        {"offset": 44,  "length": 11, "type": "bold"},
     ],
 }
 
