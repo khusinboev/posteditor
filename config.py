@@ -196,6 +196,7 @@ RAW_ENTITIES: dict[int, list[dict]] = {
         {"offset": 0,  "length": 2,  "type": "custom_emoji", "custom_emoji_id": "5319109506225938985"},
         {"offset": 44,  "length": 28, "type": "bold"},
         {"offset": 0,  "length": 94, "type": "italic"},
+        {"offset": 3,  "length": 19, "type": "bold"},
     ],
 }
 
