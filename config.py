@@ -93,12 +93,12 @@ ALL_TEXT: list[str] = [
 # ---------------------------------------------------------------------------
 CHANNEL_TEXTS: dict[str, list[int]] = {
     "nodavlattalim":    [0],
-    "abitur24":         [7, 8, 1],
-    "Talim_Live":       [7, 8, 2],
-    "Talim24uz":        [7, 8, 3],
+    "abitur24":         [1],
+    "Talim_Live":       [2],
+    "Talim24uz":        [3],
     "Axmadjanovuz":     [6],
     "nodavlattalim_uz": [5],
-    "ai_lingoBot":      [7, 8, 1],
+    "ai_lingoBot":      [1],
 }
 
 
