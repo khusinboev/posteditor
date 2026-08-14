@@ -6,3 +6,6 @@ my_bot.session
 logs/
 __pycache__/
 *.pyc
+
+# claude — .claude/ ichida infra/server eslatmalari bor, commit qilinmaydi
+.claude/
